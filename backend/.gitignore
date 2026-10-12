@@ -11,3 +11,6 @@ wheels/
 
 # Jupyter notebooks (only commit .py scripts)
 *.ipynb
+
+# Data files
+data

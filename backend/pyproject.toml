@@ -4,6 +4,9 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "geopandas>=1.1.4",
+    "pandas>=3.0.5",
+    "pyarrow>=25.0.1",
+    "tqdm>=4.70.1",
 ]
 
 [dependency-groups]
@@ -15,3 +18,4 @@ dev = [
 
 [tool.jupytext]
 formats = "ipynb,py:percent"
+notebook_metadata_filter = "-all"

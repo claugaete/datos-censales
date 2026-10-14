@@ -1,0 +1,22 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    command: uv run flask run --host=0.0.0.0 --port=5000 --debug
+    volumes:
+      - ./backend:/app
+      - ./backend/data:/app/data
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+    environment:
+          - UV_PROJECT_ENVIRONMENT=/app/.venv-docker
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "5173:5173"

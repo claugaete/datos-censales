@@ -1,0 +1,15 @@
+@import 'tailwindcss';
+
+.maplibregl-ctrl-top-left,
+.maplibregl-ctrl-top-right,
+.maplibregl-ctrl-bottom-left,
+.maplibregl-ctrl-bottom-right {
+    position: absolute;
+    pointer-events: none;
+    z-index: 2;
+}
+
+.maplibregl-ctrl-attrib-button:focus,
+.maplibregl-ctrl-group button:focus {
+    box-shadow: 0 0 2px 2px rgb(0 150 255 / 1);
+}

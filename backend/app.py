@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 
 import pandas as pd
-from flask import Flask, abort, jsonify, make_response, send_file
+from flask import Flask, abort, jsonify, make_response, send_from_directory
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -60,6 +60,11 @@ def getTiles(z: int, x: int, y: int):
     return response
 
 
+@app.route("/api/comuna-list/")
+def getComunaList():
+    return send_from_directory(PROCESSED_DATA_PATH, "comunas.json")
+
+
 @app.route("/api/comuna/<comuna>/bbox/")
 def getComunaBbox(comuna: str):
     try:
@@ -70,10 +75,7 @@ def getComunaBbox(comuna: str):
 
 @app.route("/api/comuna/<comuna>/manzent-geom")
 def getComunaManzentGeom(comuna: str):
-    path = MANZENT_GEOM_PATH / f"{comuna}.fgb"
-    if not path.exists():
-        return send_file(b"", mimetype="application/octet-stream")
-    return send_file(path, mimetype="application/octet-stream")
+    return send_from_directory(MANZENT_GEOM_PATH, f"{comuna}.fgb")
 
 
 def getComunaData(comuna: str, comuna_data_dict: dict[str, pd.DataFrame]):

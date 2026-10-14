@@ -14,7 +14,7 @@ import requests
 from tqdm import tqdm
 
 try:
-    DATA_PATH = Path(__file__).resolve().parent / "data"
+    DATA_PATH = Path(__file__).resolve().parent.parent / "data"
 except NameError:
     DATA_PATH = Path("..") / "data"
 

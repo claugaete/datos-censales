@@ -16,7 +16,7 @@ from tobler.util import h3fy
 from tqdm import tqdm
 
 try:
-    DATA_PATH = Path(__file__).resolve().parent / "data"
+    DATA_PATH = Path(__file__).resolve().parent.parent / "data"
 except NameError:
     DATA_PATH = Path("..") / "data"
 
@@ -56,6 +56,7 @@ manzent = manzent.rename_geometry("geometry").set_index("MANZENT")
 # - Número de inmigrantes
 # - Porcentaje de inmigrantes
 # - Promedio de edad
+
 
 # %%
 # función que recibe el GDF de una comuna y retorna sus estadísticas

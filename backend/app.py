@@ -1,9 +1,10 @@
+import json
 import math
 import sqlite3
 from pathlib import Path
 
 import pandas as pd
-from flask import Flask, Response, abort, make_response, send_file
+from flask import Flask, abort, jsonify, make_response, send_file
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -80,7 +81,12 @@ def getComunaData(comuna: str, comuna_data_dict: dict[str, pd.DataFrame]):
     if data is None:
         abort(404)
     else:
-        return Response(data.to_json(orient="records"), mimetype="application/json")
+        data_json = json.loads(data.to_json(orient="records"))
+        payload = {
+            "max_population": data["n_per"].max(),
+            "data": data_json,
+        }
+        return jsonify(payload)
 
 
 @app.route("/api/comuna/<comuna>/manzent-data")

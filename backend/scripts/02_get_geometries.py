@@ -22,7 +22,7 @@ INTERIM_DATA_PATH = DATA_PATH / "interim"
 PROCESSED_DATA_PATH = DATA_PATH / "processed"
 
 # %% [markdown]
-# ## Generación de MBTiles para comunas
+# ## Generación de JSONs intermedios para comunas
 
 # %%
 comunas = gpd.read_parquet(
@@ -52,6 +52,20 @@ comunas.sort_values("COMUNA").groupby("REGION")["COMUNA"].apply(list).reindex(
         "MAGALLANES Y DE LA ANTÁRTICA CHILENA",
     ]
 ).to_json(PROCESSED_DATA_PATH / "comunas.json")
+
+# %%
+# creamos un JSON con la bounding box de cada comuna, para poder hacer zoom
+# hacia la bbox en la aplicación web incluso cuando los datos aún están
+# cargando
+comunas.set_index("COMUNA").bounds.to_json(
+    PROCESSED_DATA_PATH / "comunas_bbox.json", orient="index"
+)
+
+# %%
+comunas_bbox = pd.read_json(PROCESSED_DATA_PATH / "comunas_bbox.json", orient="index")
+
+# %% [markdown]
+# ## Generación de MBTiles para comunas
 
 # %%
 comunas.to_file(INTERIM_DATA_PATH / "comunas.geojsonl")

@@ -4,27 +4,34 @@ import sqlite3
 from pathlib import Path
 
 import pandas as pd
-from flask import Flask, abort, jsonify, make_response, send_from_directory
+from flask import Flask, abort, jsonify, make_response, request, send_from_directory
 from flask_cors import CORS
 
 app = Flask(__name__)
 app.url_map.strict_slashes = False
 CORS(app)
 
-PROCESSED_DATA_PATH = Path("data") / "processed"
+PROCESSED_DATA_PATH = Path(__file__).resolve().parent / "data" / "processed"
 MANZENT_GEOM_PATH = PROCESSED_DATA_PATH / "manzent_geom"
 MBTILES_PATH = PROCESSED_DATA_PATH / "comunas.mbtiles"
+CRUCES_PATH = PROCESSED_DATA_PATH / "stats" / "cruces"
 
 comunas_bbox = pd.read_json(PROCESSED_DATA_PATH / "comunas_bbox.json", orient="index")
-stats_manzent = pd.read_csv(PROCESSED_DATA_PATH / "stats" / "manzent.csv", index_col=0)
-stats_h3 = pd.read_csv(PROCESSED_DATA_PATH / "stats" / "h3_comuna.csv", index_col=0)
+comunas_cut = pd.read_json(
+    PROCESSED_DATA_PATH / "comunas_cut.json", orient="index"
+).squeeze()
+stats_manzent = pd.read_csv(PROCESSED_DATA_PATH / "stats" / "manzent.csv")
+stats_h3 = pd.read_csv(PROCESSED_DATA_PATH / "stats" / "h3_comuna.csv")
+cruces_variables = pd.read_json(
+    PROCESSED_DATA_PATH / "stats" / "variables.json", orient="index"
+).index.to_list()
 
 stats_manzent_grouped = {
-    comuna: group.reset_index().drop(columns="COMUNA")
+    comuna: group.set_index("MANZENT", drop=False).drop(columns="COMUNA")
     for comuna, group in stats_manzent.groupby("COMUNA")
 }
 stats_h3_grouped = {
-    comuna: group.reset_index().drop(columns="COMUNA")
+    comuna: group.set_index("hex_id", drop=False).drop(columns="COMUNA")
     for comuna, group in stats_h3.groupby("COMUNA")
 }
 
@@ -60,9 +67,14 @@ def getTiles(z: int, x: int, y: int):
     return response
 
 
-@app.route("/api/comuna-list/")
+@app.route("/api/list/comunas")
 def getComunaList():
     return send_from_directory(PROCESSED_DATA_PATH, "comunas.json")
+
+
+@app.route("/api/list/variables")
+def getVariableList():
+    return send_from_directory(PROCESSED_DATA_PATH / "stats", "variables.json")
 
 
 @app.route("/api/comuna/<comuna>/bbox/")
@@ -78,27 +90,73 @@ def getComunaManzentGeom(comuna: str):
     return send_from_directory(MANZENT_GEOM_PATH, f"{comuna}.fgb")
 
 
-def getComunaData(comuna: str, comuna_data_dict: dict[str, pd.DataFrame]):
-    data = comuna_data_dict.get(comuna)
-    if data is None:
-        abort(404)
-    else:
-        data_json = json.loads(data.to_json(orient="records"))
-        payload = {
-            "max_population": data["n_per"].max(),
-            "data": data_json,
-        }
-        return jsonify(payload)
+def getComunaData(
+    comuna: str,
+    comuna_data_dict: dict[str, pd.DataFrame],
+    var1: str,
+    cat1: str,
+    var2: str,
+    cat2: str,
+):
+    # obtenemos data general de cada manzent
+    general_data = comuna_data_dict.get(comuna)
+    if general_data is None:
+        abort(404, "NoComuna")
+
+    # damos vuelta variables si es necesario (abortamos si una de las
+    # variables no existe)
+    try:
+        if cruces_variables.index(var1) > cruces_variables.index(var2):
+            var1, var2 = var2, var1
+            cat1, cat2 = cat2, cat1
+    except ValueError:
+        abort(404, "NoVar")
+
+    # leemos los conteos solicitados
+    count_data = (
+        pd.read_parquet(
+            CRUCES_PATH / f"cruces_{comunas_cut.loc[comuna]}.parquet",
+            filters=[
+                ("var1", "==", var1),
+                ("cat1", "==", cat1),
+                ("var2", "==", var2),
+                ("cat2", "==", cat2),
+            ],
+        )
+        .set_index("MANZENT")["conteo"]
+        .fillna(0)
+        .astype(float)
+    )
+    if len(count_data) == 0:
+        abort(404, "NoCat")
+
+    # hay que hacer un dropna porque en algunos casos la "manzana" con mayor
+    # población es una manzana que en verdad no existe (9999), con lo cual la
+    # leyenda queda mal
+    all_data = pd.concat([general_data, count_data], axis=1).dropna()
+
+    print(all_data["conteo"].idxmax(), all_data.loc[all_data["conteo"].idxmax()])
+
+    data_json = json.loads(all_data.to_json(orient="records"))
+    payload = {
+        "max_population": all_data["conteo"].max(),
+        "data": data_json,
+    }
+    return jsonify(payload)
 
 
 @app.route("/api/comuna/<comuna>/manzent-data")
 def getComunaManzentData(comuna: str):
-    return getComunaData(comuna, stats_manzent_grouped)
+    var1 = request.args.get("var1")
+    cat1 = request.args.get("cat1")
+    var2 = request.args.get("var2")
+    cat2 = request.args.get("cat2")
+    return getComunaData(comuna, stats_manzent_grouped, var1, cat1, var2, cat2)
 
 
 @app.route("/api/comuna/<comuna>/h3-data")
 def getComunaH3Data(comuna: str):
-    return getComunaData(comuna, stats_h3_grouped)
+    abort(404, "NotImplemented")
 
 
 if __name__ == "__main__":

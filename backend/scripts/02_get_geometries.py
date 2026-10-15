@@ -30,6 +30,12 @@ comunas = gpd.read_parquet(
 )
 
 # %%
+# creamos un JSON asociando cada comuna con su CUT
+comunas.set_index("COMUNA")["CUT"].to_json(
+    PROCESSED_DATA_PATH / "comunas_cut.json", orient="index"
+)
+
+# %%
 # creamos un JSON asociando cada región con sus comunas, para poder
 # seleccionar entre las distintas comunas en el frontend a partir de la región
 comunas.sort_values("COMUNA").groupby("REGION")["COMUNA"].apply(list).reindex(

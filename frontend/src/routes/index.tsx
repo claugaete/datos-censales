@@ -20,11 +20,16 @@ const DATA_TYPES = ['manzent', 'h3'] as const;
 type DataType = (typeof DATA_TYPES)[number];
 
 type DataSearch = {
-    dataType: DataType;
+    dataType?: DataType;
     comunaName?: string;
+    var1?: string;
+    cat1?: string;
+    var2?: string;
+    cat2?: string;
 };
 
 type ComunasByRegion = Record<string, string[]>;
+type VariablesList = Record<string, string[]>;
 
 type Bbox = {
     minx: number;
@@ -70,23 +75,32 @@ export const Route = createFileRoute('/')({
     component: HomeComponent,
     validateSearch: (search: Record<string, unknown>): DataSearch => {
         return {
-            dataType: isDataType(search.dataType) ? search.dataType : 'manzent',
+            dataType: isDataType(search.dataType) ? search.dataType : undefined,
             comunaName: (search.comunaName as string) || undefined,
+            var1: (search.var1 as string) || undefined,
+            cat1: (search.cat1 as string) || undefined,
+            var2: (search.var2 as string) || undefined,
+            cat2: (search.cat2 as string) || undefined,
         };
     },
 });
 
 function HomeComponent() {
-    const { dataType, comunaName } = useSearch({ from: '/' });
+    const { dataType, comunaName, var1, cat1, var2, cat2 } = useSearch({ from: '/' });
     const navigate = useNavigate();
 
+    const [variablesList, setVariablesList] = useState<VariablesList>({});
     const [comunasByRegion, setComunasByRegion] = useState<ComunasByRegion>({});
     const [region, setRegion] = useState('');
     const [dataRecordsArray, setDataRecordsArray] = useState<DataRecordsArray>([]);
     const [dataRecordsById, setDataRecordsById] = useState<DataRecordsById>({});
     const [dataAvailable, setDataAvailable] = useState(false);
     const [selectedComuna, setSelectedComuna] = useState<string>(comunaName ?? '');
-    const [selectedDataType, setSelectedDataType] = useState(dataType);
+    const [selectedDataType, setSelectedDataType] = useState(dataType ?? 'manzent');
+    const [selectedVariable1, setSelectedVariable1] = useState(var1 ?? '');
+    const [selectedCategory1, setSelectedCategory1] = useState(cat1 ?? '');
+    const [selectedVariable2, setSelectedVariable2] = useState(var2 ?? '');
+    const [selectedCategory2, setSelectedCategory2] = useState(cat2 ?? '');
     const [maxPopulation, setMaxPopulation] = useState(0);
     const [viewport, setViewport] = useState<MapViewState>({
         latitude: -40,
@@ -110,10 +124,23 @@ function HomeComponent() {
     }, [comunaName, comunasByRegion]);
 
     useEffect(() => {
-        fetch('/api/comuna-list/')
+        fetch('/api/list/variables/')
+            .then((response) => response.json())
+            .then((data: VariablesList) => setVariablesList(data));
+    }, []);
+
+    useEffect(() => {
+        fetch('/api/list/comunas/')
             .then((response) => response.json())
             .then((data: ComunasByRegion) => setComunasByRegion(data));
     }, []);
+
+    useEffect(() => {
+        setSelectedVariable1(var1 ?? '');
+        setSelectedCategory1(cat1 ?? '');
+        setSelectedVariable2(var2 ?? '');
+        setSelectedCategory2(cat2 ?? '');
+    }, [var1, cat1, var2, cat2]);
 
     useEffect(() => {
         if (!validComunaName) {
@@ -126,7 +153,7 @@ function HomeComponent() {
         }
 
         setSelectedComuna(validComunaName);
-        setSelectedDataType(dataType);
+        setSelectedDataType(dataType ?? 'manzent');
         setMaxPopulation(0);
         setDataAvailable(false);
 
@@ -136,23 +163,28 @@ function HomeComponent() {
 
         setRegion(matchingRegion?.[0] ?? '');
 
-        fetch(`/api/comuna/${validComunaName}/${dataType}-data/`)
-            .then((response) => {
-                if (!response.ok) return;
-                return response.json();
-            })
-            .then((dataWithLegend: DataRecordsWithLegend) => {
-                if (!dataWithLegend) return;
-                const { max_population, data } = dataWithLegend;
+        if (var1 && cat1 && var2 && cat2) {
+            const urlFilters = new URLSearchParams({ var1, cat1, var2, cat2 });
+            fetch(
+                `/api/comuna/${validComunaName}/${dataType ?? 'manzent'}-data/?${urlFilters.toString()}`,
+            )
+                .then((response) => {
+                    if (!response.ok) return;
+                    return response.json();
+                })
+                .then((dataWithLegend: DataRecordsWithLegend) => {
+                    if (!dataWithLegend) return;
+                    const { max_population, data } = dataWithLegend;
 
-                setMaxPopulation(max_population);
-                setDataRecordsById(
-                    Object.fromEntries(data.map((r) => [r.MANZENT ?? r.hex_id, r])),
-                );
-                setDataRecordsArray(data);
-                setDataAvailable(true);
-            });
-    }, [validComunaName, dataType, comunasByRegion]);
+                    setMaxPopulation(max_population);
+                    setDataRecordsById(
+                        Object.fromEntries(data.map((r) => [r.MANZENT ?? r.hex_id, r])),
+                    );
+                    setDataRecordsArray(data);
+                    setDataAvailable(true);
+                });
+        }
+    }, [validComunaName, dataType, var1, cat1, var2, cat2]);
 
     function zoomToComuna(bbox: Bbox, transitionDuration: number = 1500) {
         const viewportWebMercator = new WebMercatorViewport({
@@ -200,19 +232,45 @@ function HomeComponent() {
         }
     }, [validComunaName, dataType, comunasByRegion, navigate]);
 
-    const handleSubmit = (comunaName: string, dataType: string) => {
+    const handleSubmit = ({
+        comunaName,
+        dataType,
+        var1,
+        cat1,
+        var2,
+        cat2,
+    }: DataSearch) => {
         navigate({
             to: '/',
             search: {
                 comunaName,
-                dataType: (dataType as DataSearch['dataType']) || 'manzent',
+                dataType: isDataType(dataType) ? dataType : 'manzent',
+                var1,
+                cat1,
+                var2,
+                cat2,
             },
         });
     };
 
     const handleFormSubmit = (event: React.SubmitEvent<HTMLFormElement>) => {
         event.preventDefault();
-        if (selectedComuna) handleSubmit(selectedComuna, selectedDataType);
+        if (
+            selectedComuna &&
+            selectedVariable1 &&
+            selectedCategory1 &&
+            selectedVariable2 &&
+            selectedCategory2
+        ) {
+            handleSubmit({
+                comunaName: selectedComuna,
+                dataType: selectedDataType,
+                var1: selectedVariable1,
+                cat1: selectedCategory1,
+                var2: selectedVariable2,
+                cat2: selectedCategory2,
+            });
+        }
     };
 
     const onClickGeoJson = useCallback(
@@ -220,7 +278,14 @@ function HomeComponent() {
             if (object) {
                 const newComuna = object.properties.COMUNA;
                 if (comunaName === newComuna) return;
-                handleSubmit(newComuna, dataType);
+                handleSubmit({
+                    comunaName: newComuna,
+                    dataType: dataType ?? 'manzent',
+                    var1,
+                    cat1,
+                    var2,
+                    cat2,
+                });
             }
         },
         [comunaName, dataType],
@@ -229,13 +294,13 @@ function HomeComponent() {
     function getManzentPopulation(id: string) {
         const record = dataRecordsById[id];
         if (!record) return null;
-        return typeof record.n_per === 'number' ? record.n_per : null;
+        return typeof record.conteo === 'number' ? record.conteo : null;
     }
 
     function getTooltipData(id: string) {
         const record = dataRecordsById[id];
         if (!record) return null;
-        return `ID: ${record.MANZENT ?? record.hex_id}\nPoblación: ${Math.round(record.n_per as number).toLocaleString('es-CL')} hab.`;
+        return `ID: ${record.MANZENT ?? record.hex_id}\nPoblación total: ${Math.round(record.poblacion as number).toLocaleString('es-CL')} hab.\nPoblación filtrada: ${Math.round(record.conteo as number).toLocaleString('es-CL')} hab.`;
     }
 
     const getTooltip = useCallback(
@@ -268,44 +333,45 @@ function HomeComponent() {
         [getTooltip],
     );
 
-    const dataLayer = !comunaName || !dataAvailable
-        ? new GeoJsonLayer({ id: 'empty-layer', data: [] })
-        : dataType === 'h3'
-          ? new H3HexagonLayer({
-                id: `comuna-${populationKey}`,
-                data: dataRecordsArray,
-                getHexagon: (d) => d.hex_id,
-                extruded: false,
-                stroked: true,
-                filled: true,
-                lineWidthMinPixels: 2,
-                opacity: 0.4,
-                getLineColor: [60, 60, 60],
-                getFillColor: (d) => getPopulationColor(d.n_per, maxPopulation),
-                updateTriggers: {
-                    getFillColor: [maxPopulation],
-                },
-                pickable: true,
-            })
-          : new GeoJsonLayer({
-                id: `comuna-${populationKey}`,
-                data: `/api/comuna/${comunaName}/manzent-geom/`,
-                loaders: [FlatGeobufLoader],
-                stroked: true,
-                filled: true,
-                lineWidthMinPixels: 2,
-                opacity: 0.4,
-                getLineColor: [60, 60, 60],
-                getFillColor: (d) =>
-                    getPopulationColor(
-                        getManzentPopulation(d.properties.MANZENT),
-                        maxPopulation,
-                    ),
-                updateTriggers: {
-                    getFillColor: [maxPopulation],
-                },
-                pickable: true,
-            });
+    const dataLayer =
+        !comunaName || !dataAvailable
+            ? new GeoJsonLayer({ id: 'empty-layer', data: [] })
+            : dataType === 'h3'
+              ? new H3HexagonLayer({
+                    id: `comuna-${populationKey}`,
+                    data: dataRecordsArray,
+                    getHexagon: (d) => d.hex_id,
+                    extruded: false,
+                    stroked: true,
+                    filled: true,
+                    lineWidthMinPixels: 2,
+                    opacity: 0.4,
+                    getLineColor: [60, 60, 60],
+                    getFillColor: (d) => getPopulationColor(d.conteo, maxPopulation),
+                    updateTriggers: {
+                        getFillColor: [maxPopulation],
+                    },
+                    pickable: true,
+                })
+              : new GeoJsonLayer({
+                    id: `comuna-${populationKey}`,
+                    data: `/api/comuna/${comunaName}/manzent-geom/`,
+                    loaders: [FlatGeobufLoader],
+                    stroked: true,
+                    filled: true,
+                    lineWidthMinPixels: 2,
+                    opacity: 0.4,
+                    getLineColor: [60, 60, 60],
+                    getFillColor: (d) =>
+                        getPopulationColor(
+                            getManzentPopulation(d.properties.MANZENT),
+                            maxPopulation,
+                        ),
+                    updateTriggers: {
+                        getFillColor: [maxPopulation],
+                    },
+                    pickable: true,
+                });
 
     const layers = [
         new MVTLayer({
@@ -338,14 +404,29 @@ function HomeComponent() {
             <aside className="flex w-80 min-w-80 shrink-0 flex-col border-r border-slate-200 bg-white p-5 shadow-sm">
                 <Form
                     comunasByRegion={comunasByRegion}
+                    variablesList={variablesList}
                     region={region}
                     selectedComuna={selectedComuna}
                     selectedDataType={selectedDataType}
+                    selectedVariable1={selectedVariable1}
+                    selectedCategory1={selectedCategory1}
+                    selectedVariable2={selectedVariable2}
+                    selectedCategory2={selectedCategory2}
                     onRegionChange={setRegion}
                     onComunaChange={setSelectedComuna}
                     onLayerChange={(layer) =>
-                        setSelectedDataType(layer as DataSearch['dataType'])
+                        setSelectedDataType(isDataType(layer) ? layer : 'manzent')
                     }
+                    onVariable1Change={(variable) => {
+                        setSelectedVariable1(variable);
+                        setSelectedCategory1('');
+                    }}
+                    onCategory1Change={setSelectedCategory1}
+                    onVariable2Change={(variable) => {
+                        setSelectedVariable2(variable);
+                        setSelectedCategory2('');
+                    }}
+                    onCategory2Change={setSelectedCategory2}
                     onSubmit={handleFormSubmit}
                 />
             </aside>

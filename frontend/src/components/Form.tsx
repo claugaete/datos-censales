@@ -12,7 +12,7 @@ type FormProps = {
     selectedCategory2: string;
     onRegionChange: (region: string) => void;
     onComunaChange: (comuna: string) => void;
-    onLayerChange: (layer: string) => void;
+    onDataTypeChange: (newType: string) => void;
     onVariable1Change: (variable: string) => void;
     onCategory1Change: (category: string) => void;
     onVariable2Change: (variable: string) => void;
@@ -32,7 +32,7 @@ export function Form({
     selectedCategory2,
     onRegionChange,
     onComunaChange,
-    onLayerChange,
+    onDataTypeChange,
     onVariable1Change,
     onCategory1Change,
     onVariable2Change,
@@ -183,14 +183,14 @@ export function Form({
 
             <label
                 className="flex flex-col gap-1 text-sm font-medium text-slate-700"
-                htmlFor="layer"
+                htmlFor="dataType"
             >
                 Capa
                 <select
                     className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-                    id="layer"
+                    id="dataType"
                     value={selectedDataType}
-                    onChange={(event) => onLayerChange(event.target.value)}
+                    onChange={(event) => onDataTypeChange(event.target.value)}
                 >
                     <option value="manzent">Manzanas</option>
                     <option value="h3">H3 (Área Urbana)</option>

@@ -409,8 +409,8 @@ function HomeComponent() {
                     selectedCategory2={selectedFilters.cat2}
                     onRegionChange={setRegion}
                     onComunaChange={setSelectedComuna}
-                    onLayerChange={(layer) =>
-                        setSelectedDataType(isDataType(layer) ? layer : 'manzent')
+                    onDataTypeChange={(newType) =>
+                        setSelectedDataType(isDataType(newType) ? newType : 'manzent')
                     }
                     onVariable1Change={(variable) => {
                         if (variable === selectedFilters.var2) {

@@ -240,6 +240,8 @@ function HomeComponent() {
         var2,
         cat2,
     }: DataSearch) => {
+        if (var1 === var2) return;
+
         navigate({
             to: '/',
             search: {
@@ -260,7 +262,8 @@ function HomeComponent() {
             selectedVariable1 &&
             selectedCategory1 &&
             selectedVariable2 &&
-            selectedCategory2
+            selectedCategory2 &&
+            selectedVariable1 !== selectedVariable2
         ) {
             handleSubmit({
                 comunaName: selectedComuna,
@@ -420,6 +423,10 @@ function HomeComponent() {
                     onVariable1Change={(variable) => {
                         setSelectedVariable1(variable);
                         setSelectedCategory1('');
+                        if (variable === selectedVariable2) {
+                            setSelectedVariable2('');
+                            setSelectedCategory2('');
+                        }
                     }}
                     onCategory1Change={setSelectedCategory1}
                     onVariable2Change={(variable) => {

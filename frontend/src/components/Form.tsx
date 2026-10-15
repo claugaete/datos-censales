@@ -148,11 +148,13 @@ export function Form({
                         required
                     >
                         <option value="">Selecciona una variable</option>
-                        {variableNames.map((variable) => (
-                            <option key={variable} value={variable}>
-                                {variable}
-                            </option>
-                        ))}
+                        {variableNames
+                            .filter((variable) => variable !== selectedVariable1)
+                            .map((variable) => (
+                                <option key={variable} value={variable}>
+                                    {variable}
+                                </option>
+                            ))}
                     </select>
                 </label>
 

@@ -19,14 +19,19 @@ setWorkerUrl(workerUrl);
 const DATA_TYPES = ['manzent', 'h3'] as const;
 type DataType = (typeof DATA_TYPES)[number];
 
-type DataSearch = {
-    dataType?: DataType;
-    comunaName?: string;
+type Filters = {
     var1?: string;
     cat1?: string;
     var2?: string;
     cat2?: string;
 };
+
+type DataSearchBase = {
+    dataType?: DataType;
+    comunaName?: string;
+};
+
+type DataSearch = DataSearchBase & Filters;
 
 type ComunasByRegion = Record<string, string[]>;
 type VariablesList = Record<string, string[]>;
@@ -71,6 +76,15 @@ function getPopulationColor(population: number | null, maxPopulation: number) {
     return [Math.max(0, Math.min(255, red)), 0, 0] as [number, number, number];
 }
 
+function getFormFilters(filters: Filters) {
+    return {
+        var1: filters.var1 ?? '',
+        cat1: filters.cat1 ?? '',
+        var2: filters.var2 ?? '',
+        cat2: filters.cat2 ?? '',
+    };
+}
+
 export const Route = createFileRoute('/')({
     component: HomeComponent,
     validateSearch: (search: Record<string, unknown>): DataSearch => {
@@ -87,6 +101,10 @@ export const Route = createFileRoute('/')({
 
 function HomeComponent() {
     const { dataType, comunaName, var1, cat1, var2, cat2 } = useSearch({ from: '/' });
+    const filters: Filters = useMemo(
+        () => ({ var1, cat1, var2, cat2 }),
+        [var1, cat1, var2, cat2],
+    );
     const navigate = useNavigate();
 
     const [variablesList, setVariablesList] = useState<VariablesList>({});
@@ -97,10 +115,7 @@ function HomeComponent() {
     const [dataAvailable, setDataAvailable] = useState(false);
     const [selectedComuna, setSelectedComuna] = useState<string>(comunaName ?? '');
     const [selectedDataType, setSelectedDataType] = useState(dataType ?? 'manzent');
-    const [selectedVariable1, setSelectedVariable1] = useState(var1 ?? '');
-    const [selectedCategory1, setSelectedCategory1] = useState(cat1 ?? '');
-    const [selectedVariable2, setSelectedVariable2] = useState(var2 ?? '');
-    const [selectedCategory2, setSelectedCategory2] = useState(cat2 ?? '');
+    const [selectedFilters, setSelectedFilters] = useState(getFormFilters(filters));
     const [maxPopulation, setMaxPopulation] = useState(0);
     const [viewport, setViewport] = useState<MapViewState>({
         latitude: -40,
@@ -136,13 +151,6 @@ function HomeComponent() {
     }, []);
 
     useEffect(() => {
-        setSelectedVariable1(var1 ?? '');
-        setSelectedCategory1(cat1 ?? '');
-        setSelectedVariable2(var2 ?? '');
-        setSelectedCategory2(cat2 ?? '');
-    }, [var1, cat1, var2, cat2]);
-
-    useEffect(() => {
         if (!validComunaName) {
             setSelectedComuna('');
             setRegion('');
@@ -163,8 +171,8 @@ function HomeComponent() {
 
         setRegion(matchingRegion?.[0] ?? '');
 
-        if (var1 && cat1 && var2 && cat2) {
-            const urlFilters = new URLSearchParams({ var1, cat1, var2, cat2 });
+        if (Object.values(filters).every((value) => value)) {
+            const urlFilters = new URLSearchParams({ ...filters });
             fetch(
                 `/api/comuna/${validComunaName}/${dataType ?? 'manzent'}-data/?${urlFilters.toString()}`,
             )
@@ -184,7 +192,7 @@ function HomeComponent() {
                     setDataAvailable(true);
                 });
         }
-    }, [validComunaName, dataType, var1, cat1, var2, cat2]);
+    }, [validComunaName, dataType, filters]);
 
     function zoomToComuna(bbox: Bbox, transitionDuration: number = 1500) {
         const viewportWebMercator = new WebMercatorViewport({
@@ -227,30 +235,20 @@ function HomeComponent() {
                 search: {
                     dataType,
                     comunaName: undefined,
+                    ...filters,
                 },
             });
         }
-    }, [validComunaName, dataType, comunasByRegion, navigate]);
+    }, [validComunaName, dataType, comunasByRegion, navigate, filters]);
 
-    const handleSubmit = ({
-        comunaName,
-        dataType,
-        var1,
-        cat1,
-        var2,
-        cat2,
-    }: DataSearch) => {
-        if (var1 === var2) return;
-
+    const handleSubmit = ({ comunaName, dataType, ...filters }: DataSearch) => {
+        console.log(comunaName, dataType, filters);
         navigate({
             to: '/',
             search: {
                 comunaName,
                 dataType: isDataType(dataType) ? dataType : 'manzent',
-                var1,
-                cat1,
-                var2,
-                cat2,
+                ...filters,
             },
         });
     };
@@ -259,19 +257,12 @@ function HomeComponent() {
         event.preventDefault();
         if (
             selectedComuna &&
-            selectedVariable1 &&
-            selectedCategory1 &&
-            selectedVariable2 &&
-            selectedCategory2 &&
-            selectedVariable1 !== selectedVariable2
+            Object.values(selectedFilters).every((value) => value !== '')
         ) {
             handleSubmit({
                 comunaName: selectedComuna,
                 dataType: selectedDataType,
-                var1: selectedVariable1,
-                cat1: selectedCategory1,
-                var2: selectedVariable2,
-                cat2: selectedCategory2,
+                ...selectedFilters,
             });
         }
     };
@@ -284,14 +275,11 @@ function HomeComponent() {
                 handleSubmit({
                     comunaName: newComuna,
                     dataType: dataType ?? 'manzent',
-                    var1,
-                    cat1,
-                    var2,
-                    cat2,
+                    ...filters,
                 });
             }
         },
-        [comunaName, dataType],
+        [comunaName, dataType, filters],
     );
 
     function getManzentPopulation(id: string) {
@@ -303,7 +291,11 @@ function HomeComponent() {
     function getTooltipData(id: string) {
         const record = dataRecordsById[id];
         if (!record) return null;
-        return `ID: ${record.MANZENT ?? record.hex_id}\nPoblación total: ${Math.round(record.poblacion as number).toLocaleString('es-CL')} hab.\nPoblación filtrada: ${Math.round(record.conteo as number).toLocaleString('es-CL')} hab.`;
+        return (
+            `ID: ${record.MANZENT ?? record.hex_id}\n`
+            + `Población total: ${Math.round(record.poblacion as number).toLocaleString('es-CL')} hab.\n`
+            + `Población filtrada: ${Math.round(record.conteo as number).toLocaleString('es-CL')} hab.`
+        );
     }
 
     const getTooltip = useCallback(
@@ -411,29 +403,49 @@ function HomeComponent() {
                     region={region}
                     selectedComuna={selectedComuna}
                     selectedDataType={selectedDataType}
-                    selectedVariable1={selectedVariable1}
-                    selectedCategory1={selectedCategory1}
-                    selectedVariable2={selectedVariable2}
-                    selectedCategory2={selectedCategory2}
+                    selectedVariable1={selectedFilters.var1}
+                    selectedCategory1={selectedFilters.cat1}
+                    selectedVariable2={selectedFilters.var2}
+                    selectedCategory2={selectedFilters.cat2}
                     onRegionChange={setRegion}
                     onComunaChange={setSelectedComuna}
                     onLayerChange={(layer) =>
                         setSelectedDataType(isDataType(layer) ? layer : 'manzent')
                     }
                     onVariable1Change={(variable) => {
-                        setSelectedVariable1(variable);
-                        setSelectedCategory1('');
-                        if (variable === selectedVariable2) {
-                            setSelectedVariable2('');
-                            setSelectedCategory2('');
+                        if (variable === selectedFilters.var2) {
+                            setSelectedFilters({
+                                ...selectedFilters,
+                                var2: '',
+                                cat2: '',
+                            });
+                        } else {
+                            setSelectedFilters({
+                                ...selectedFilters,
+                                var1: variable,
+                                cat1: '',
+                            });
                         }
                     }}
-                    onCategory1Change={setSelectedCategory1}
-                    onVariable2Change={(variable) => {
-                        setSelectedVariable2(variable);
-                        setSelectedCategory2('');
-                    }}
-                    onCategory2Change={setSelectedCategory2}
+                    onCategory1Change={(category) =>
+                        setSelectedFilters({
+                            ...selectedFilters,
+                            cat1: category,
+                        })
+                    }
+                    onVariable2Change={(variable) =>
+                        setSelectedFilters({
+                            ...selectedFilters,
+                            var2: variable,
+                            cat2: '',
+                        })
+                    }
+                    onCategory2Change={(category) =>
+                        setSelectedFilters({
+                            ...selectedFilters,
+                            cat2: category,
+                        })
+                    }
                     onSubmit={handleFormSubmit}
                 />
             </aside>

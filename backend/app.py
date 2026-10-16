@@ -43,6 +43,11 @@ def hello():
 
 @app.route("/api/tiles/<int:z>/<int:x>/<int:y>/")
 def getTiles(z: int, x: int, y: int):
+    """
+    Obtiene las tiles correspondientes a las comunas visibles según el
+    viewport actual.
+    """
+
     # convert xyz to tms
     tms_y = int(math.pow(2, z) - 1 - y)
 
@@ -69,16 +74,24 @@ def getTiles(z: int, x: int, y: int):
 
 @app.route("/api/list/comunas")
 def getComunaList():
+    """Retorna una lista que asocia a cada región con sus comunas."""
     return send_from_directory(PROCESSED_DATA_PATH, "comunas.json")
 
 
 @app.route("/api/list/variables")
 def getVariableList():
+    """Retorna una lista que asocia cada variable (de los cruces realizados)
+    con sus categorías posibles."""
     return send_from_directory(PROCESSED_DATA_PATH / "stats", "variables.json")
 
 
 @app.route("/api/comuna/<comuna>/bbox/")
 def getComunaBbox(comuna: str):
+    """
+    Retorna la bounding box de la comuna solicitada, como un JSON con 4
+    variables (`minx`, `miny`, `maxx`, `maxy`).
+    """
+
     try:
         return comunas_bbox.loc[comuna].to_dict()
     except KeyError:
@@ -87,6 +100,9 @@ def getComunaBbox(comuna: str):
 
 @app.route("/api/comuna/<comuna>/manzent-geom")
 def getComunaManzentGeom(comuna: str):
+    """
+    Retorna la geometría de las manzanas/entidades de la comuna solicitada.
+    """
     return send_from_directory(MANZENT_GEOM_PATH, f"{comuna}.fgb")
 
 
@@ -99,6 +115,26 @@ def getComunaData(
     cat2: str,
     view: str,
 ):
+    """
+    Obtiene los siguientes datos para cada "celda" de una comuna dada:
+
+    - La población total y superficie de la "celda".
+    - El conteo de personas para las cuales `var1` toma el valor `cat1` y
+      `var2` toma el valor `cat2`.
+    - La densidad (superficial) de personas que cumplen la condición anterior.
+    - El porcentaje de la población total que representan las personas que
+      cumplen la condición.
+
+    Además, retorna el valor máximo para la columna dada por `view`.
+
+    Utiliza los datos de la comuna presentes en `comuna_data_dict` (que puede
+    ser distinto según si se desea visualizar por manzana/entidad o por celdas
+    de H3).
+
+    NOTA: Actualmente solo se poseen los conteos para el nivel
+    manzana/entidad, no para celdas de H3.
+    """
+
     # obtenemos data general de cada manzent
     general_data = comuna_data_dict.get(comuna)
     if general_data is None:
@@ -160,6 +196,11 @@ def getComunaData(
 
 @app.route("/api/comuna/<comuna>/manzent-data")
 def getComunaManzentData(comuna: str):
+    """
+    Obtiene los datos de `getComunaData` para cada manzana/entidad de una
+    comuna.
+    """
+
     var1 = request.args.get("var1")
     cat1 = request.args.get("cat1")
     var2 = request.args.get("var2")
@@ -170,6 +211,11 @@ def getComunaManzentData(comuna: str):
 
 @app.route("/api/comuna/<comuna>/h3-data")
 def getComunaH3Data(comuna: str):
+    """
+    Obtiene los datos de `getComunaData` para cada celda de H3 de una comuna
+    (solo considerando su área urbana).
+    """
+
     abort(404, "NotImplemented")
 
 

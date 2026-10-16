@@ -105,8 +105,8 @@ function UnivariateLegend({
                 }}
             />
             <div className="mt-1 flex justify-between text-gray-700">
-                <span>0</span>
-                <span>{numberToString(maxValue)}</span>
+                <span>{view === 'porcentaje' ? '0%' : '0'}</span>
+                <span>{view === 'porcentaje' ? numberToString(maxValue, '%', 100) : numberToString(maxValue)}</span>
             </div>
         </div>
     );

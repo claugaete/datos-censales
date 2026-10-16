@@ -10,14 +10,12 @@ import '@deck.gl/widgets/stylesheet.css';
 import { FlatGeobufLoader } from '@loaders.gl/flatgeobuf';
 
 import { Form } from '../components/Form';
-import { MapView } from '../components/MapView';
+import { MapView, numberToString } from '../components/MapView';
 import { setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { DataType, ViewType, isDataType, isView } from '../types';
 setWorkerUrl(workerUrl);
-
-const DATA_TYPES = ['manzent', 'h3'] as const;
-type DataType = (typeof DATA_TYPES)[number];
 
 type Filters = {
     var1?: string;
@@ -29,6 +27,7 @@ type Filters = {
 type DataSearchBase = {
     dataType?: DataType;
     comunaName?: string;
+    view?: ViewType;
 };
 
 type DataSearch = DataSearchBase & Filters;
@@ -44,21 +43,14 @@ type Bbox = {
 };
 
 type DataRecord = {
-    id: string;
     [key: string]: unknown;
 };
 type DataRecordsArray = DataRecord[];
 type DataRecordsById = Record<string, DataRecord>;
 type DataRecordsWithLegend = {
-    max_population: number;
+    max_value: number;
     data: DataRecordsArray;
 };
-
-function isDataType(value: unknown): value is DataType {
-    return (
-        typeof value === 'string' && DATA_TYPES.some((dataType) => dataType === value)
-    );
-}
 
 function isValidComuna(
     comunaName: unknown,
@@ -70,9 +62,9 @@ function isValidComuna(
     );
 }
 
-function getPopulationColor(population: number | null, maxPopulation: number) {
-    if (!population) return [0, 0, 0] as [number, number, number];
-    const red = maxPopulation > 0 ? (population / maxPopulation) * 255 : 0;
+function getColor(value: number | null, maxValue: number) {
+    if (!value) return [0, 0, 0] as [number, number, number];
+    const red = maxValue > 0 ? (value / maxValue) * 255 : 0;
     return [Math.max(0, Math.min(255, red)), 0, 0] as [number, number, number];
 }
 
@@ -91,6 +83,7 @@ export const Route = createFileRoute('/')({
         return {
             dataType: isDataType(search.dataType) ? search.dataType : undefined,
             comunaName: (search.comunaName as string) || undefined,
+            view: isView(search.view) ? search.view : undefined,
             var1: (search.var1 as string) || undefined,
             cat1: (search.cat1 as string) || undefined,
             var2: (search.var2 as string) || undefined,
@@ -103,6 +96,7 @@ function HomeComponent() {
     const {
         dataType: dataTypeParam,
         comunaName,
+        view: viewParam,
         var1,
         cat1,
         var2,
@@ -113,6 +107,7 @@ function HomeComponent() {
         [var1, cat1, var2, cat2],
     );
     const dataType = dataTypeParam ?? 'manzent';
+    const view = viewParam ?? 'conteo';
     const navigate = useNavigate();
 
     const [variablesList, setVariablesList] = useState<VariablesList>({});
@@ -123,8 +118,9 @@ function HomeComponent() {
     const [dataAvailable, setDataAvailable] = useState(false);
     const [selectedComuna, setSelectedComuna] = useState<string>(comunaName ?? '');
     const [selectedDataType, setSelectedDataType] = useState(dataType);
+    const [selectedView, setSelectedView] = useState(view);
     const [selectedFilters, setSelectedFilters] = useState(getFormFilters(filters));
-    const [maxPopulation, setMaxPopulation] = useState(0);
+    const [maxValue, setMaxValue] = useState(0);
     const [viewport, setViewport] = useState<MapViewState>({
         latitude: -40,
         longitude: -70,
@@ -169,7 +165,8 @@ function HomeComponent() {
 
         setSelectedComuna(validComunaName);
         setSelectedDataType(dataType);
-        setMaxPopulation(0);
+        setSelectedView(view);
+        setMaxValue(0);
         setDataAvailable(false);
 
         const matchingRegion = Object.entries(comunasByRegion).find(([, comunas]) =>
@@ -179,7 +176,7 @@ function HomeComponent() {
         setRegion(matchingRegion?.[0] ?? '');
 
         if (Object.values(filters).every((value) => value)) {
-            const urlFilters = new URLSearchParams({ ...filters });
+            const urlFilters = new URLSearchParams({ ...filters, view });
             fetch(
                 `/api/comuna/${validComunaName}/${dataType}-data/?${urlFilters.toString()}`,
             )
@@ -191,9 +188,9 @@ function HomeComponent() {
                     if (!dataWithLegend || comunaNameRef.current !== comunaName) {
                         return;
                     }
-                    const { max_population, data } = dataWithLegend;
+                    const { max_value, data } = dataWithLegend;
 
-                    setMaxPopulation(max_population);
+                    setMaxValue(max_value);
                     setDataRecordsById(
                         Object.fromEntries(data.map((r) => [r.MANZENT ?? r.hex_id, r])),
                     );
@@ -201,7 +198,7 @@ function HomeComponent() {
                     setDataAvailable(true);
                 });
         }
-    }, [validComunaName, dataType, filters]);
+    }, [validComunaName, dataType, view, filters]);
 
     function zoomToComuna(bbox: Bbox, transitionDuration: number = 1500) {
         const viewportWebMercator = new WebMercatorViewport({
@@ -233,7 +230,7 @@ function HomeComponent() {
                 if (comunaNameRef.current !== comunaName) return;
                 zoomToComuna(bbox);
             });
-    }, [validComunaName, dataType, filters]);
+    }, [validComunaName, dataType, view, filters]);
 
     useEffect(() => {
         if (Object.keys(comunasByRegion).length === 0) return;
@@ -243,20 +240,22 @@ function HomeComponent() {
                 to: '/',
                 replace: true,
                 search: {
-                    dataType,
                     comunaName: undefined,
+                    dataType,
+                    view,
                     ...filters,
                 },
             });
         }
-    }, [validComunaName, dataType, comunasByRegion, navigate, filters]);
+    }, [validComunaName, dataType, view, filters, comunasByRegion, navigate]);
 
-    const handleSubmit = ({ comunaName, dataType, ...filters }: DataSearch) => {
+    const handleSubmit = ({ comunaName, dataType, view, ...filters }: DataSearch) => {
         navigate({
             to: '/',
             search: {
                 comunaName,
                 dataType: isDataType(dataType) ? dataType : 'manzent',
+                view: isView(view) ? view : 'conteo',
                 ...filters,
             },
         });
@@ -271,6 +270,7 @@ function HomeComponent() {
             handleSubmit({
                 comunaName: selectedComuna,
                 dataType: selectedDataType,
+                view: selectedView,
                 ...selectedFilters,
             });
         }
@@ -284,17 +284,18 @@ function HomeComponent() {
                 handleSubmit({
                     comunaName: newComuna,
                     dataType: dataType,
+                    view: view,
                     ...filters,
                 });
             }
         },
-        [comunaName, dataType, filters],
+        [comunaName, dataType, view, filters],
     );
 
-    function getManzentPopulation(id: string) {
+    function getManzentValue(id: string) {
         const record = dataRecordsById[id];
         if (!record) return null;
-        return typeof record.conteo === 'number' ? record.conteo : null;
+        return typeof record[view] === 'number' ? record[view] : null;
     }
 
     function getTooltipData(id: string) {
@@ -302,8 +303,11 @@ function HomeComponent() {
         if (!record) return null;
         return (
             `ID: ${record.MANZENT ?? record.hex_id}\n` +
-            `Población total: ${Math.round(record.poblacion as number).toLocaleString('es-CL')} hab.\n` +
-            `Población filtrada: ${Math.round(record.conteo as number).toLocaleString('es-CL')} hab.`
+            `Población total: ${numberToString(record.poblacion, ' hab.')}\n` +
+            `Área: ${numberToString(record.area, ' m²', 1_000_000)}\n` +
+            `Población filtrada: ${numberToString(record.conteo, ' hab.')}\n` +
+            `Densidad: ${numberToString(record.densidad, ' hab./km²')}\n` +
+            `Porcentaje del total: ${numberToString(record.porcentaje, '%', 100)}`
         );
     }
 
@@ -351,9 +355,9 @@ function HomeComponent() {
                     lineWidthMinPixels: 2,
                     opacity: 0.4,
                     getLineColor: [60, 60, 60],
-                    getFillColor: (d) => getPopulationColor(d.conteo, maxPopulation),
+                    getFillColor: (d) => getColor(d[view], maxValue),
                     updateTriggers: {
-                        getFillColor: [maxPopulation],
+                        getFillColor: [maxValue],
                     },
                     pickable: true,
                 })
@@ -367,12 +371,9 @@ function HomeComponent() {
                     opacity: 0.4,
                     getLineColor: [60, 60, 60],
                     getFillColor: (d) =>
-                        getPopulationColor(
-                            getManzentPopulation(d.properties.MANZENT),
-                            maxPopulation,
-                        ),
+                        getColor(getManzentValue(d.properties.MANZENT), maxValue),
                     updateTriggers: {
-                        getFillColor: [maxPopulation],
+                        getFillColor: [maxValue],
                     },
                     pickable: true,
                 });
@@ -405,13 +406,14 @@ function HomeComponent() {
 
     return (
         <div className="flex w-full h-full">
-            <aside className="flex w-80 min-w-80 shrink-0 flex-col border-r border-slate-200 bg-white p-5 shadow-sm">
+            <aside className="flex h-full min-h-0 w-80 min-w-80 shrink-0 flex-col overflow-y-auto border-r border-slate-200 bg-white p-5 shadow-sm">
                 <Form
                     comunasByRegion={comunasByRegion}
                     variablesList={variablesList}
                     region={region}
                     selectedComuna={selectedComuna}
                     selectedDataType={selectedDataType}
+                    selectedView={selectedView}
                     selectedVariable1={selectedFilters.var1}
                     selectedCategory1={selectedFilters.cat1}
                     selectedVariable2={selectedFilters.var2}
@@ -420,6 +422,9 @@ function HomeComponent() {
                     onComunaChange={setSelectedComuna}
                     onDataTypeChange={(newType) =>
                         setSelectedDataType(isDataType(newType) ? newType : 'manzent')
+                    }
+                    onViewChange={(newView) =>
+                        setSelectedView(isView(newView) ? newView : 'conteo')
                     }
                     onVariable1Change={(variable) => {
                         if (variable === selectedFilters.var2) {
@@ -461,7 +466,8 @@ function HomeComponent() {
             <MapView
                 viewport={viewport}
                 layers={layers}
-                maxPopulation={maxPopulation}
+                maxValue={maxValue}
+                view={view}
                 tooltip={tooltip}
                 onViewStateChange={setViewport}
                 onHover={onHover}

@@ -97,6 +97,7 @@ def getComunaData(
     cat1: str,
     var2: str,
     cat2: str,
+    view: str,
 ):
     # obtenemos data general de cada manzent
     general_data = comuna_data_dict.get(comuna)
@@ -136,13 +137,22 @@ def getComunaData(
     # hay que hacer un dropna porque en algunos casos la "manzana" con mayor
     # población es una manzana que en verdad no existe (9999), con lo cual la
     # leyenda queda mal
-    all_data = pd.concat([general_data, count_data], axis=1).dropna()
+    all_data = (
+        pd.concat([general_data, count_data], axis=1)
+        .dropna(subset=["poblacion"])
+        .fillna(0)
+    )
+    all_data["densidad"] = all_data["conteo"] / all_data["area"]
+    all_data["porcentaje"] = all_data["conteo"] / all_data["poblacion"]
 
-    print(all_data["conteo"].idxmax(), all_data.loc[all_data["conteo"].idxmax()])
+    try:
+        max_value = all_data[view].max()
+    except KeyError:
+        abort(404, "NoView")
 
     data_json = json.loads(all_data.to_json(orient="records"))
     payload = {
-        "max_population": all_data["conteo"].max(),
+        "max_value": max_value,
         "data": data_json,
     }
     return jsonify(payload)
@@ -154,7 +164,8 @@ def getComunaManzentData(comuna: str):
     cat1 = request.args.get("cat1")
     var2 = request.args.get("var2")
     cat2 = request.args.get("cat2")
-    return getComunaData(comuna, stats_manzent_grouped, var1, cat1, var2, cat2)
+    view = request.args.get("view")
+    return getComunaData(comuna, stats_manzent_grouped, var1, cat1, var2, cat2, view)
 
 
 @app.route("/api/comuna/<comuna>/h3-data")

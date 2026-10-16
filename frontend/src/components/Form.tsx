@@ -1,4 +1,16 @@
 import type { SubmitEventHandler } from 'react';
+import { DataType, ViewType } from '../types';
+
+const DATA_TYPE_OPTIONS: Record<DataType, string> = {
+    manzent: 'Manzanas',
+    h3: 'H3 (Área Urbana)',
+};
+
+const VIEW_OPTIONS: Record<ViewType, string> = {
+    conteo: 'Conteo',
+    densidad: 'Densidad',
+    porcentaje: 'Porcentaje',
+};
 
 type FormProps = {
     comunasByRegion: Record<string, string[]>;
@@ -6,6 +18,7 @@ type FormProps = {
     region: string;
     selectedComuna: string;
     selectedDataType: string;
+    selectedView: string;
     selectedVariable1: string;
     selectedCategory1: string;
     selectedVariable2: string;
@@ -13,6 +26,7 @@ type FormProps = {
     onRegionChange: (region: string) => void;
     onComunaChange: (comuna: string) => void;
     onDataTypeChange: (newType: string) => void;
+    onViewChange: (newView: string) => void;
     onVariable1Change: (variable: string) => void;
     onCategory1Change: (category: string) => void;
     onVariable2Change: (variable: string) => void;
@@ -26,6 +40,7 @@ export function Form({
     region,
     selectedComuna,
     selectedDataType,
+    selectedView,
     selectedVariable1,
     selectedCategory1,
     selectedVariable2,
@@ -33,6 +48,7 @@ export function Form({
     onRegionChange,
     onComunaChange,
     onDataTypeChange,
+    onViewChange,
     onVariable1Change,
     onCategory1Change,
     onVariable2Change,
@@ -43,6 +59,13 @@ export function Form({
 
     return (
         <form className="flex flex-col gap-3" onSubmit={onSubmit}>
+            <button
+                className="mt-2 rounded-md border border-black bg-black px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:border-slate-800 hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:ring-offset-2"
+                type="submit"
+            >
+                Mostrar en el mapa
+            </button>
+
             <label
                 className="flex flex-col gap-1 text-sm font-medium text-slate-700"
                 htmlFor="region"
@@ -89,9 +112,42 @@ export function Form({
                 </select>
             </label>
 
+            <label
+                className="flex flex-col gap-1 text-sm font-medium text-slate-700"
+                htmlFor="dataType"
+            >
+                Capa
+                <select
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                    id="dataType"
+                    value={selectedDataType}
+                    onChange={(event) => onDataTypeChange(event.target.value)}
+                >
+                    {Object.entries(DATA_TYPE_OPTIONS).map(([key, value]) => (
+                        <option value={key}>{value}</option>
+                    ))}
+                </select>
+            </label>
+
+            <label
+                className="flex flex-col gap-1 text-sm font-medium text-slate-700"
+                htmlFor="viewType"
+            >
+                Vista
+                <select
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                    id="dataType"
+                    value={selectedView}
+                    onChange={(event) => onViewChange(event.target.value)}
+                >
+                    {Object.entries(VIEW_OPTIONS).map(([key, value]) => (
+                        <option value={key}>{value}</option>
+                    ))}
+                </select>
+            </label>
+
             <span className="text-sm font-medium text-slate-700">Filtros</span>
             <fieldset className="flex flex-col gap-3 rounded-md border border-slate-200 p-3">
-
                 <label
                     className="flex flex-col gap-1 text-sm font-medium text-slate-700"
                     htmlFor="variable1"
@@ -180,28 +236,6 @@ export function Form({
                     </select>
                 </label>
             </fieldset>
-
-            <label
-                className="flex flex-col gap-1 text-sm font-medium text-slate-700"
-                htmlFor="dataType"
-            >
-                Capa
-                <select
-                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-                    id="dataType"
-                    value={selectedDataType}
-                    onChange={(event) => onDataTypeChange(event.target.value)}
-                >
-                    <option value="manzent">Manzanas</option>
-                    <option value="h3">H3 (Área Urbana)</option>
-                </select>
-            </label>
-            <button
-                className="mt-2 rounded-md border border-black bg-black px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:border-slate-800 hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:ring-offset-2"
-                type="submit"
-            >
-                Mostrar en el mapa
-            </button>
         </form>
     );
 }

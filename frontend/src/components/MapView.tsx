@@ -5,6 +5,13 @@ import type { MjolnirPointerEvent } from 'mjolnir.js';
 import Map, { StyleSpecification } from 'react-map-gl/maplibre';
 
 import basemapStyle from '../../data/style.json';
+import { ViewType } from '../types';
+
+const LEGEND_LABELS: Record<ViewType, string> = {
+    conteo: 'Población filtrada (hab.)',
+    densidad: 'Densidad (hab./km²)',
+    porcentaje: 'Porcentaje de población total',
+};
 
 type Tooltip = {
     x: number;
@@ -15,11 +22,23 @@ type Tooltip = {
 type MapViewProps = {
     viewport: MapViewState;
     layers: Layer[];
-    maxPopulation: number;
+    maxValue: number;
+    view: ViewType;
     tooltip?: Tooltip;
     onViewStateChange: (viewState: MapViewState) => void;
     onHover: (info: PickingInfo, event: MjolnirPointerEvent) => void;
 };
+
+export function numberToString(
+    n: unknown,
+    suffix: string = '',
+    factor: number = 1,
+) {
+    if (typeof n !== 'number') return 'N/A';
+    const nScaled = (n as number) * factor;
+    if (Number.isInteger(nScaled)) return nScaled.toLocaleString('es-CL') + suffix;
+    return Number(nScaled.toFixed(2)).toLocaleString('es-CL') + suffix;
+}
 
 const mapAttribution = (
     <div className="pointer-events-auto absolute right-2 bottom-2 z-2 gap-2 rounded-xl bg-white px-2 py-1 text-[13px] shadow-sm">
@@ -41,13 +60,13 @@ const mapAttribution = (
     </div>
 );
 
-function PopulationLegend({ maxPopulation }: { maxPopulation: number }) {
+function UnivariateLegend({ maxValue, view }: { maxValue: number; view: ViewType }) {
     return (
         <div
             aria-label="Leyenda de población"
             className="pointer-events-auto absolute bottom-2 left-2 z-2 w-52 rounded-xl bg-white px-3 py-2 text-xs shadow-sm"
         >
-            <div className="mb-1 font-medium">Población</div>
+            <div className="mb-1 font-medium">{LEGEND_LABELS[view]}</div>
             <div
                 className="h-3 rounded-sm border border-gray-300"
                 style={{
@@ -57,7 +76,7 @@ function PopulationLegend({ maxPopulation }: { maxPopulation: number }) {
             />
             <div className="mt-1 flex justify-between text-gray-700">
                 <span>0</span>
-                <span>{Math.round(maxPopulation).toLocaleString('es-CL')}</span>
+                <span>{numberToString(maxValue)}</span>
             </div>
         </div>
     );
@@ -66,7 +85,8 @@ function PopulationLegend({ maxPopulation }: { maxPopulation: number }) {
 export function MapView({
     viewport,
     layers,
-    maxPopulation,
+    maxValue,
+    view,
     tooltip,
     onViewStateChange,
     onHover,
@@ -94,7 +114,7 @@ export function MapView({
                     {tooltip.text}
                 </div>
             )}
-            {maxPopulation && <PopulationLegend maxPopulation={maxPopulation} />}
+            {maxValue && <UnivariateLegend maxValue={maxValue} view={view} />}
             {mapAttribution}
         </div>
     );

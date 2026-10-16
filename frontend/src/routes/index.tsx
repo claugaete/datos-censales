@@ -15,7 +15,14 @@ import { MapView, numberToString } from '../components/MapView';
 import { setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { DataType, ViewType, isDataType, isView } from '../types';
+import {
+    DataType,
+    MAX_VALUES_DEFAULT,
+    MaxValues,
+    ViewType,
+    isDataType,
+    isView,
+} from '../types';
 setWorkerUrl(workerUrl);
 
 const scale: Scale = chroma.scale('Viridis');
@@ -52,7 +59,7 @@ type DataRecord = {
 type DataRecordsArray = DataRecord[];
 type DataRecordsById = Record<string, DataRecord>;
 type DataRecordsWithLegend = {
-    max_value: number;
+    maxValues: MaxValues;
     data: DataRecordsArray;
 };
 
@@ -67,8 +74,7 @@ function isValidComuna(
 }
 
 function getColor(value: number | null, maxValue: number) {
-    if (typeof value !== 'number' || maxValue == 0)
-        return NAN_COLOR;
+    if (typeof value !== 'number') return NAN_COLOR;
     const fraction = maxValue > 0 ? value / maxValue : 0;
     return scale(fraction).rgb() as [number, number, number];
 }
@@ -125,7 +131,7 @@ function HomeComponent() {
     const [selectedDataType, setSelectedDataType] = useState(dataType);
     const [selectedView, setSelectedView] = useState(view);
     const [selectedFilters, setSelectedFilters] = useState(getFormFilters(filters));
-    const [maxValue, setMaxValue] = useState(0);
+    const [maxValues, setMaxValues] = useState(MAX_VALUES_DEFAULT);
     const [viewport, setViewport] = useState<MapViewState>({
         latitude: -40,
         longitude: -70,
@@ -171,7 +177,7 @@ function HomeComponent() {
         setSelectedComuna(validComunaName);
         setSelectedDataType(dataType);
         setSelectedView(view);
-        setMaxValue(0);
+        setMaxValues(MAX_VALUES_DEFAULT);
         setDataAvailable(false);
 
         const matchingRegion = Object.entries(comunasByRegion).find(([, comunas]) =>
@@ -181,7 +187,7 @@ function HomeComponent() {
         setRegion(matchingRegion?.[0] ?? '');
 
         if (Object.values(filters).every((value) => value)) {
-            const urlFilters = new URLSearchParams({ ...filters, view });
+            const urlFilters = new URLSearchParams({ ...filters });
             fetch(
                 `/api/comuna/${validComunaName}/${dataType}-data/?${urlFilters.toString()}`,
             )
@@ -193,9 +199,9 @@ function HomeComponent() {
                     if (!dataWithLegend || comunaNameRef.current !== comunaName) {
                         return;
                     }
-                    const { max_value, data } = dataWithLegend;
+                    const { maxValues, data } = dataWithLegend;
 
-                    setMaxValue(max_value);
+                    setMaxValues(maxValues);
                     setDataRecordsById(
                         Object.fromEntries(data.map((r) => [r.MANZENT ?? r.hex_id, r])),
                     );
@@ -203,7 +209,7 @@ function HomeComponent() {
                     setDataAvailable(true);
                 });
         }
-    }, [validComunaName, dataType, view, filters]);
+    }, [validComunaName, dataType, filters]);
 
     function zoomToComuna(bbox: Bbox, transitionDuration: number = 1500) {
         const viewportWebMercator = new WebMercatorViewport({
@@ -235,7 +241,7 @@ function HomeComponent() {
                 if (comunaNameRef.current !== comunaName) return;
                 zoomToComuna(bbox);
             });
-    }, [validComunaName, dataType, view, filters]);
+    }, [validComunaName]);
 
     useEffect(() => {
         if (Object.keys(comunasByRegion).length === 0) return;
@@ -252,7 +258,7 @@ function HomeComponent() {
                 },
             });
         }
-    }, [validComunaName, dataType, view, filters, comunasByRegion, navigate]);
+    }, [validComunaName, comunasByRegion, navigate]);
 
     const handleSubmit = ({ comunaName, dataType, view, ...filters }: DataSearch) => {
         navigate({
@@ -357,12 +363,12 @@ function HomeComponent() {
                     extruded: false,
                     stroked: true,
                     filled: true,
-                    lineWidthMinPixels: 2,
+                    lineWidthMinPixels: 0,
                     opacity: 0.4,
                     getLineColor: [60, 60, 60],
-                    getFillColor: (d) => getColor(d[view], maxValue),
+                    getFillColor: (d) => getColor(d[view], maxValues[view]),
                     updateTriggers: {
-                        getFillColor: [maxValue],
+                        getFillColor: [maxValues, view],
                     },
                     pickable: true,
                 })
@@ -372,13 +378,16 @@ function HomeComponent() {
                     loaders: [FlatGeobufLoader],
                     stroked: true,
                     filled: true,
-                    lineWidthMinPixels: 2,
+                    lineWidthMinPixels: 0,
                     opacity: 0.4,
                     getLineColor: [60, 60, 60],
                     getFillColor: (d) =>
-                        getColor(getManzentValue(d.properties.MANZENT), maxValue),
+                        getColor(
+                            getManzentValue(d.properties.MANZENT),
+                            maxValues[view],
+                        ),
                     updateTriggers: {
-                        getFillColor: [maxValue],
+                        getFillColor: [maxValues, view],
                     },
                     pickable: true,
                 });
@@ -471,7 +480,7 @@ function HomeComponent() {
             <MapView
                 viewport={viewport}
                 layers={layers}
-                maxValue={maxValue}
+                maxValues={maxValues}
                 view={view}
                 scale={scale}
                 tooltip={tooltip}

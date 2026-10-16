@@ -6,7 +6,7 @@ import Map, { StyleSpecification } from 'react-map-gl/maplibre';
 import { Scale } from 'chroma-js';
 
 import basemapStyle from '../../data/style.json';
-import { ViewType } from '../types';
+import { MaxValues, ViewType } from '../types';
 
 const LEGEND_LABELS: Record<ViewType, string> = {
     conteo: 'Población filtrada (hab.)',
@@ -23,7 +23,7 @@ type Tooltip = {
 type MapViewProps = {
     viewport: MapViewState;
     layers: Layer[];
-    maxValue: number;
+    maxValues: MaxValues;
     view: ViewType;
     scale: Scale;
     tooltip?: Tooltip;
@@ -90,7 +90,7 @@ function UnivariateLegend({
 export function MapView({
     viewport,
     layers,
-    maxValue,
+    maxValues,
     view,
     scale,
     tooltip,
@@ -120,8 +120,8 @@ export function MapView({
                     {tooltip.text}
                 </div>
             )}
-            {maxValue && (
-                <UnivariateLegend maxValue={maxValue} view={view} scale={scale} />
+            {maxValues[view] && (
+                <UnivariateLegend maxValue={maxValues[view]} view={view} scale={scale} />
             )}
             {mapAttribution}
         </div>

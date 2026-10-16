@@ -113,7 +113,6 @@ def getComunaData(
     cat1: str,
     var2: str,
     cat2: str,
-    view: str,
 ):
     """
     Obtiene los siguientes datos para cada "celda" de una comuna dada:
@@ -125,14 +124,7 @@ def getComunaData(
     - El porcentaje de la población total que representan las personas que
       cumplen la condición.
 
-    Además, retorna el valor máximo para la columna dada por `view`.
-
-    Utiliza los datos de la comuna presentes en `comuna_data_dict` (que puede
-    ser distinto según si se desea visualizar por manzana/entidad o por celdas
-    de H3).
-
-    NOTA: Actualmente solo se poseen los conteos para el nivel
-    manzana/entidad, no para celdas de H3.
+    Además, retorna el valor máximo para estas últimas tres variables.
     """
 
     # obtenemos data general de cada manzent
@@ -181,14 +173,14 @@ def getComunaData(
     all_data["densidad"] = all_data["conteo"] / all_data["area"]
     all_data["porcentaje"] = all_data["conteo"] / all_data["poblacion"]
 
-    try:
-        max_value = all_data[view].max()
-    except KeyError:
-        abort(404, "NoView")
+    max_values = {
+        column: all_data[column].max()
+        for column in ("conteo", "densidad", "porcentaje")
+    }
 
     data_json = json.loads(all_data.to_json(orient="records"))
     payload = {
-        "max_value": max_value,
+        "maxValues": max_values,
         "data": data_json,
     }
     return jsonify(payload)
@@ -205,8 +197,7 @@ def getComunaManzentData(comuna: str):
     cat1 = request.args.get("cat1")
     var2 = request.args.get("var2")
     cat2 = request.args.get("cat2")
-    view = request.args.get("view")
-    return getComunaData(comuna, stats_manzent_grouped, var1, cat1, var2, cat2, view)
+    return getComunaData(comuna, stats_manzent_grouped, var1, cat1, var2, cat2)
 
 
 @app.route("/api/comuna/<comuna>/h3-data")

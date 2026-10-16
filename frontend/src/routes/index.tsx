@@ -100,11 +100,19 @@ export const Route = createFileRoute('/')({
 });
 
 function HomeComponent() {
-    const { dataType, comunaName, var1, cat1, var2, cat2 } = useSearch({ from: '/' });
+    const {
+        dataType: dataTypeParam,
+        comunaName,
+        var1,
+        cat1,
+        var2,
+        cat2,
+    } = useSearch({ from: '/' });
     const filters: Filters = useMemo(
         () => ({ var1, cat1, var2, cat2 }),
         [var1, cat1, var2, cat2],
     );
+    const dataType = dataTypeParam ?? 'manzent';
     const navigate = useNavigate();
 
     const [variablesList, setVariablesList] = useState<VariablesList>({});
@@ -114,7 +122,7 @@ function HomeComponent() {
     const [dataRecordsById, setDataRecordsById] = useState<DataRecordsById>({});
     const [dataAvailable, setDataAvailable] = useState(false);
     const [selectedComuna, setSelectedComuna] = useState<string>(comunaName ?? '');
-    const [selectedDataType, setSelectedDataType] = useState(dataType ?? 'manzent');
+    const [selectedDataType, setSelectedDataType] = useState(dataType);
     const [selectedFilters, setSelectedFilters] = useState(getFormFilters(filters));
     const [maxPopulation, setMaxPopulation] = useState(0);
     const [viewport, setViewport] = useState<MapViewState>({
@@ -160,7 +168,7 @@ function HomeComponent() {
         }
 
         setSelectedComuna(validComunaName);
-        setSelectedDataType(dataType ?? 'manzent');
+        setSelectedDataType(dataType);
         setMaxPopulation(0);
         setDataAvailable(false);
 
@@ -173,17 +181,14 @@ function HomeComponent() {
         if (Object.values(filters).every((value) => value)) {
             const urlFilters = new URLSearchParams({ ...filters });
             fetch(
-                `/api/comuna/${validComunaName}/${dataType ?? 'manzent'}-data/?${urlFilters.toString()}`,
+                `/api/comuna/${validComunaName}/${dataType}-data/?${urlFilters.toString()}`,
             )
                 .then((response) => {
                     if (!response.ok) return;
                     return response.json();
                 })
                 .then((dataWithLegend: DataRecordsWithLegend) => {
-                    if (
-                        !dataWithLegend ||
-                        comunaNameRef.current !== comunaName
-                    ) {
+                    if (!dataWithLegend || comunaNameRef.current !== comunaName) {
                         return;
                     }
                     const { max_population, data } = dataWithLegend;
@@ -228,7 +233,7 @@ function HomeComponent() {
                 if (comunaNameRef.current !== comunaName) return;
                 zoomToComuna(bbox);
             });
-    }, [validComunaName, dataType]);
+    }, [validComunaName, dataType, filters]);
 
     useEffect(() => {
         if (Object.keys(comunasByRegion).length === 0) return;
@@ -278,7 +283,7 @@ function HomeComponent() {
                 if (comunaName === newComuna) return;
                 handleSubmit({
                     comunaName: newComuna,
-                    dataType: dataType ?? 'manzent',
+                    dataType: dataType,
                     ...filters,
                 });
             }
@@ -296,9 +301,9 @@ function HomeComponent() {
         const record = dataRecordsById[id];
         if (!record) return null;
         return (
-            `ID: ${record.MANZENT ?? record.hex_id}\n`
-            + `Población total: ${Math.round(record.poblacion as number).toLocaleString('es-CL')} hab.\n`
-            + `Población filtrada: ${Math.round(record.conteo as number).toLocaleString('es-CL')} hab.`
+            `ID: ${record.MANZENT ?? record.hex_id}\n` +
+            `Población total: ${Math.round(record.poblacion as number).toLocaleString('es-CL')} hab.\n` +
+            `Población filtrada: ${Math.round(record.conteo as number).toLocaleString('es-CL')} hab.`
         );
     }
 

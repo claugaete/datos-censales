@@ -113,20 +113,23 @@ def getComunaData(
         abort(404, "NoVar")
 
     # leemos los conteos solicitados
-    count_data = (
-        pd.read_parquet(
-            CRUCES_PATH / f"cruces_{comunas_cut.loc[comuna]}.parquet",
-            filters=[
-                ("var1", "==", var1),
-                ("cat1", "==", cat1),
-                ("var2", "==", var2),
-                ("cat2", "==", cat2),
-            ],
+    try:
+        count_data = (
+            pd.read_parquet(
+                CRUCES_PATH / f"cruces_{comunas_cut.loc[comuna]}.parquet",
+                filters=[
+                    ("var1", "==", var1),
+                    ("cat1", "==", cat1),
+                    ("var2", "==", var2),
+                    ("cat2", "==", cat2),
+                ],
+            )
+            .set_index("MANZENT")["conteo"]
+            .fillna(0)
+            .astype(float)
         )
-        .set_index("MANZENT")["conteo"]
-        .fillna(0)
-        .astype(float)
-    )
+    except FileNotFoundError:
+        abort(404, "NoData")
     if len(count_data) == 0:
         abort(404, "NoCat")
 

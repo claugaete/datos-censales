@@ -1,11 +1,13 @@
 import type { SubmitEventHandler } from 'react';
 import { DataType, ViewType } from '../types';
 
+// mapeo de cada tipo de dato con el texto a mostrar en el formulario
 const DATA_TYPE_OPTIONS: Record<DataType, string> = {
     manzent: 'Manzanas',
     h3: 'H3 (Área Urbana)',
 };
 
+// mapeo de cada vista con el texto a mostrar en el formulario
 const VIEW_OPTIONS: Record<ViewType, string> = {
     conteo: 'Conteo',
     densidad: 'Densidad',
@@ -15,7 +17,7 @@ const VIEW_OPTIONS: Record<ViewType, string> = {
 type FormProps = {
     comunasByRegion: Record<string, string[]>;
     variablesList: Record<string, string[]>;
-    region: string;
+    selectedRegion: string;
     selectedComuna: string;
     selectedDataType: string;
     selectedView: string;
@@ -37,7 +39,7 @@ type FormProps = {
 export function Form({
     comunasByRegion,
     variablesList,
-    region,
+    selectedRegion,
     selectedComuna,
     selectedDataType,
     selectedView,
@@ -74,7 +76,7 @@ export function Form({
                 <select
                     className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
                     id="region"
-                    value={region}
+                    value={selectedRegion}
                     onChange={(event) => {
                         onRegionChange(event.target.value);
                         onComunaChange('');
@@ -100,11 +102,11 @@ export function Form({
                     id="comuna"
                     value={selectedComuna}
                     onChange={(event) => onComunaChange(event.target.value)}
-                    disabled={!region}
+                    disabled={!selectedRegion}
                     required
                 >
                     <option value="">Selecciona una comuna</option>
-                    {(comunasByRegion[region] ?? []).map((comunaName) => (
+                    {(comunasByRegion[selectedRegion] ?? []).map((comunaName) => (
                         <option key={comunaName} value={comunaName}>
                             {comunaName}
                         </option>

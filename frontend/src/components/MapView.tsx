@@ -8,6 +8,7 @@ import { Scale } from 'chroma-js';
 import basemapStyle from '../../data/style.json';
 import { MaxValues, ViewType } from '../types';
 
+// mapeo de cada tipo de vista con el texto a mostrar en la leyenda
 const LEGEND_LABELS: Record<ViewType, string> = {
     conteo: 'Población filtrada (hab.)',
     densidad: 'Densidad (hab./km²)',
@@ -31,6 +32,22 @@ type MapViewProps = {
     onHover: (info: PickingInfo, event: MjolnirPointerEvent) => void;
 };
 
+/**
+ * Convierte un número en una string, según la siguiente lógica:
+ * 
+ * - Si no es un número, retorna N/A.
+ * - Si es un número:
+ *   - Lo multiplica por `factor`.
+ *   - Si es entero, lo muestra sin decimales.
+ *   - Si no es entero, lo muestra con dos decimales.
+ *   - Le agrega el sufijo `suffix` (notar que este sufijo no se agrega si el
+ *     número es N/A).
+ * 
+ * @param n El número a mostrar.
+ * @param suffix El sufijo a agregar (si el número existe).
+ * @param factor El factor por el cual multiplicar el número.
+ * @returns String con el nuevo número (de existir) y su sufijo.
+ */
 export function numberToString(n: unknown, suffix: string = '', factor: number = 1) {
     if (typeof n !== 'number') return 'N/A';
     const nScaled = (n as number) * factor;
@@ -38,6 +55,9 @@ export function numberToString(n: unknown, suffix: string = '', factor: number =
     return Number(nScaled.toFixed(2)).toLocaleString('es-CL') + suffix;
 }
 
+/**
+ * Atribución que va en la esquina inferior derecha del mapa.
+ */
 const mapAttribution = (
     <div className="pointer-events-auto absolute right-2 bottom-2 z-2 gap-2 rounded-xl bg-white px-2 py-1 text-[13px] shadow-sm">
         <a href="https://maplibre.org/" target="_blank" rel="noreferrer">
@@ -58,6 +78,11 @@ const mapAttribution = (
     </div>
 );
 
+/**
+ * Retorna una leyenda para una sola variable. Recibe el valor máximo a
+ * mostrar en la leyenda, la vista que se está utilizando (para saber qué
+ * descripción colocar), y la escala de colores.
+ */
 function UnivariateLegend({
     maxValue,
     view,

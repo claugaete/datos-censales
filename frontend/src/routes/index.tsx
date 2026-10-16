@@ -128,9 +128,8 @@ function HomeComponent() {
         { x: number; y: number; text: string } | undefined
     >();
 
-    const populationKey = `${dataType}:${comunaName}`;
-    const populationKeyRef = useRef(populationKey);
-    populationKeyRef.current = populationKey;
+    const comunaNameRef = useRef(comunaName);
+    comunaNameRef.current = comunaName;
 
     const validComunaName = useMemo(() => {
         if (Object.keys(comunasByRegion).length === 0) return undefined;
@@ -181,7 +180,12 @@ function HomeComponent() {
                     return response.json();
                 })
                 .then((dataWithLegend: DataRecordsWithLegend) => {
-                    if (!dataWithLegend) return;
+                    if (
+                        !dataWithLegend ||
+                        comunaNameRef.current !== comunaName
+                    ) {
+                        return;
+                    }
                     const { max_population, data } = dataWithLegend;
 
                     setMaxPopulation(max_population);
@@ -221,6 +225,7 @@ function HomeComponent() {
         fetch(`/api/comuna/${validComunaName}/bbox/`)
             .then((response) => response.json())
             .then((bbox: Bbox) => {
+                if (comunaNameRef.current !== comunaName) return;
                 zoomToComuna(bbox);
             });
     }, [validComunaName, dataType]);
@@ -242,7 +247,6 @@ function HomeComponent() {
     }, [validComunaName, dataType, comunasByRegion, navigate, filters]);
 
     const handleSubmit = ({ comunaName, dataType, ...filters }: DataSearch) => {
-        console.log(comunaName, dataType, filters);
         navigate({
             to: '/',
             search: {
@@ -333,7 +337,7 @@ function HomeComponent() {
             ? new GeoJsonLayer({ id: 'empty-layer', data: [] })
             : dataType === 'h3'
               ? new H3HexagonLayer({
-                    id: `comuna-${populationKey}`,
+                    id: `h3-${comunaName}`,
                     data: dataRecordsArray,
                     getHexagon: (d) => d.hex_id,
                     extruded: false,
@@ -349,7 +353,7 @@ function HomeComponent() {
                     pickable: true,
                 })
               : new GeoJsonLayer({
-                    id: `comuna-${populationKey}`,
+                    id: `manzent-${comunaName}`,
                     data: `/api/comuna/${comunaName}/manzent-geom/`,
                     loaders: [FlatGeobufLoader],
                     stroked: true,

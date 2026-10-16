@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import chroma, { Scale } from 'chroma-js';
 import { GeoJsonLayer } from '@deck.gl/layers';
 import { H3HexagonLayer, MVTLayer } from '@deck.gl/geo-layers';
 import { WebMercatorViewport, LinearInterpolator, MapViewState } from '@deck.gl/core';
@@ -16,6 +17,9 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { DataType, ViewType, isDataType, isView } from '../types';
 setWorkerUrl(workerUrl);
+
+const scale: Scale = chroma.scale('Viridis');
+const NAN_COLOR: [number, number, number] = [0, 0, 0];
 
 type Filters = {
     var1?: string;
@@ -63,9 +67,10 @@ function isValidComuna(
 }
 
 function getColor(value: number | null, maxValue: number) {
-    if (!value) return [0, 0, 0] as [number, number, number];
-    const red = maxValue > 0 ? (value / maxValue) * 255 : 0;
-    return [Math.max(0, Math.min(255, red)), 0, 0] as [number, number, number];
+    if (typeof value !== 'number' || maxValue == 0)
+        return NAN_COLOR;
+    const fraction = maxValue > 0 ? value / maxValue : 0;
+    return scale(fraction).rgb() as [number, number, number];
 }
 
 function getFormFilters(filters: Filters) {
@@ -468,6 +473,7 @@ function HomeComponent() {
                 layers={layers}
                 maxValue={maxValue}
                 view={view}
+                scale={scale}
                 tooltip={tooltip}
                 onViewStateChange={setViewport}
                 onHover={onHover}

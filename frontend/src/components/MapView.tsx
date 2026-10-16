@@ -3,6 +3,7 @@ import { DeckGL } from '@deck.gl/react';
 import { CompassWidget } from '@deck.gl/widgets';
 import type { MjolnirPointerEvent } from 'mjolnir.js';
 import Map, { StyleSpecification } from 'react-map-gl/maplibre';
+import { Scale } from 'chroma-js';
 
 import basemapStyle from '../../data/style.json';
 import { ViewType } from '../types';
@@ -24,16 +25,13 @@ type MapViewProps = {
     layers: Layer[];
     maxValue: number;
     view: ViewType;
+    scale: Scale;
     tooltip?: Tooltip;
     onViewStateChange: (viewState: MapViewState) => void;
     onHover: (info: PickingInfo, event: MjolnirPointerEvent) => void;
 };
 
-export function numberToString(
-    n: unknown,
-    suffix: string = '',
-    factor: number = 1,
-) {
+export function numberToString(n: unknown, suffix: string = '', factor: number = 1) {
     if (typeof n !== 'number') return 'N/A';
     const nScaled = (n as number) * factor;
     if (Number.isInteger(nScaled)) return nScaled.toLocaleString('es-CL') + suffix;
@@ -60,7 +58,15 @@ const mapAttribution = (
     </div>
 );
 
-function UnivariateLegend({ maxValue, view }: { maxValue: number; view: ViewType }) {
+function UnivariateLegend({
+    maxValue,
+    view,
+    scale,
+}: {
+    maxValue: number;
+    view: ViewType;
+    scale: Scale;
+}) {
     return (
         <div
             aria-label="Leyenda de población"
@@ -70,8 +76,7 @@ function UnivariateLegend({ maxValue, view }: { maxValue: number; view: ViewType
             <div
                 className="h-3 rounded-sm border border-gray-300"
                 style={{
-                    background:
-                        'linear-gradient(to right, rgb(0, 0, 0), rgb(255, 0, 0))',
+                    background: `linear-gradient(to right, ${scale.colors(20).join(', ')})`,
                 }}
             />
             <div className="mt-1 flex justify-between text-gray-700">
@@ -87,6 +92,7 @@ export function MapView({
     layers,
     maxValue,
     view,
+    scale,
     tooltip,
     onViewStateChange,
     onHover,
@@ -114,7 +120,9 @@ export function MapView({
                     {tooltip.text}
                 </div>
             )}
-            {maxValue && <UnivariateLegend maxValue={maxValue} view={view} />}
+            {maxValue && (
+                <UnivariateLegend maxValue={maxValue} view={view} scale={scale} />
+            )}
             {mapAttribution}
         </div>
     );

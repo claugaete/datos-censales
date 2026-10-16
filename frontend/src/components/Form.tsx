@@ -124,7 +124,7 @@ export function Form({
                     onChange={(event) => onDataTypeChange(event.target.value)}
                 >
                     {Object.entries(DATA_TYPE_OPTIONS).map(([key, value]) => (
-                        <option value={key}>{value}</option>
+                        <option key={key} value={key}>{value}</option>
                     ))}
                 </select>
             </label>
@@ -141,7 +141,7 @@ export function Form({
                     onChange={(event) => onViewChange(event.target.value)}
                 >
                     {Object.entries(VIEW_OPTIONS).map(([key, value]) => (
-                        <option value={key}>{value}</option>
+                        <option key={key} value={key}>{value}</option>
                     ))}
                 </select>
             </label>

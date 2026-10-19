@@ -360,6 +360,7 @@ function HomeComponent() {
     const handleSubmit = ({ comunaName, dataType, view, ...filters }: DataSearch) => {
         navigate({
             to: '/',
+            replace: true,
             search: {
                 comunaName,
                 dataType: isDataType(dataType) ? dataType : 'manzent',

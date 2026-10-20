@@ -7,8 +7,25 @@ import { routeTree } from './routeTree.gen';
 
 import './index.css';
 
+function stringifySearch(search: Record<string, unknown>): string {
+    const params = new URLSearchParams();
+
+    for (const [key, value] of Object.entries(search)) {
+        if (value === undefined || value === null) continue;
+
+        if (Array.isArray(value)) {
+            value.forEach((item) => params.append(key, String(item)));
+        } else {
+            params.set(key, String(value));
+        }
+    }
+
+    const query = params.toString().replace(/%3A/gi, ':');
+    return query ? `?${query}` : '';
+}
+
 // Create a new router instance
-const router = createRouter({ routeTree });
+const router = createRouter({ routeTree, stringifySearch });
 
 // Register the router instance for type safety
 declare module '@tanstack/react-router' {

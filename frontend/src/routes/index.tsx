@@ -22,6 +22,7 @@ import {
     ViewType,
     isDataType,
     isView,
+    Filter,
 } from '../types';
 setWorkerUrl(workerUrl);
 
@@ -30,28 +31,14 @@ const scale: Scale = chroma.scale('Viridis');
 const NAN_COLOR: [number, number, number] = [0, 0, 0];
 
 /**
- * Filtros para los datos recibidos.
+ * Todos los campos de una consulta a la aplicación (campos base + filtros).
  */
-type Filters = {
-    var1?: string;
-    cat1?: string;
-    var2?: string;
-    cat2?: string;
-};
-
-/**
- * Campos base para una consulta a la aplicación.
- */
-type DataSearchBase = {
+type DataSearch = {
     dataType?: DataType;
     comunaName?: string;
     view?: ViewType;
+    filter: string[];
 };
-
-/**
- * Todos los campos de una consulta a la aplicación (campos base + filtros).
- */
-type DataSearch = DataSearchBase & Filters;
 
 /**
  * Asocia a cada región con sus comunas.
@@ -62,6 +49,7 @@ type ComunasByRegion = Record<string, string[]>;
  * Asocia a cada variable con sus categorías (valores posibles).
  */
 type VariablesList = Record<string, string[]>;
+const MAX_FILTERS = 2;
 
 /**
  * Bounding box de un polígono.
@@ -137,19 +125,18 @@ function getColor(value: number | null, maxValue: number) {
     return scale(fraction).rgb() as [number, number, number];
 }
 
-/**
- * Destructura un objeto `filters`, reemplazando los valores indefinidos por
- * strings vacías.
- * @param filters El objeto a destructurar.
- * @returns Las variables y categorías nuevas.
- */
-function getFormFilters(filters: Filters) {
-    return {
-        var1: filters.var1 ?? '',
-        cat1: filters.cat1 ?? '',
-        var2: filters.var2 ?? '',
-        cat2: filters.cat2 ?? '',
-    };
+function filterToString(filter: Filter) {
+    return `${filter.variable}:${filter.catX}${filter.catY ? `:${filter.catY}` : ''}`;
+}
+
+function stringToFilter(filterString: string): Filter {
+    const [variable, catX, catY, ...rest] = filterString.split(':');
+    if (!catX || rest.length > 0)
+        throw new Error(
+            `Length of strings after split must be 2 or 3, ` +
+                `not ${filterString.split(':').length}`,
+        );
+    return catY ? { variable, catX, catY } : { variable, catX };
 }
 
 export const Route = createFileRoute('/')({
@@ -159,10 +146,11 @@ export const Route = createFileRoute('/')({
             dataType: isDataType(search.dataType) ? search.dataType : undefined,
             comunaName: (search.comunaName as string) || undefined,
             view: isView(search.view) ? search.view : undefined,
-            var1: (search.var1 as string) || undefined,
-            cat1: (search.cat1 as string) || undefined,
-            var2: (search.var2 as string) || undefined,
-            cat2: (search.cat2 as string) || undefined,
+            filter: Array.isArray(search.filter)
+                ? search.filter
+                : search.filter
+                  ? [String(search.filter)]
+                  : [],
         };
     },
 });
@@ -172,15 +160,16 @@ function HomeComponent() {
         dataType: dataTypeParam,
         comunaName,
         view: viewParam,
-        var1,
-        cat1,
-        var2,
-        cat2,
+        filter: filterParam,
     } = useSearch({ from: '/' });
-    const filters: Filters = useMemo(
-        () => ({ var1, cat1, var2, cat2 }),
-        [var1, cat1, var2, cat2],
-    );
+    const filterParamKey = filterParam.join('\0');
+    const filters = useMemo(() => {
+        const seen = new Set<string>();
+        return (filterParamKey ? filterParamKey.split('\0') : [])
+            .map(stringToFilter)
+            .filter((f) => !seen.has(f.variable) && seen.add(f.variable));
+    }, [filterParamKey]);
+    const visibleFilters = filters.slice(0, MAX_FILTERS);
     const dataType = dataTypeParam ?? 'manzent';
     const view = viewParam ?? 'conteo';
     const navigate = useNavigate();
@@ -198,7 +187,12 @@ function HomeComponent() {
     const [selectedComuna, setSelectedComuna] = useState<string>(comunaName ?? '');
     const [selectedDataType, setSelectedDataType] = useState(dataType);
     const [selectedView, setSelectedView] = useState(view);
-    const [selectedFilters, setSelectedFilters] = useState(getFormFilters(filters));
+    const [selectedFilters, setSelectedFilters] = useState<Filter[]>(() =>
+        Array.from(
+            { length: MAX_FILTERS },
+            (_, index) => visibleFilters[index] ?? { variable: '', catX: '' },
+        ),
+    );
 
     const [viewport, setViewport] = useState<MapViewState>({
         latitude: -40,
@@ -265,7 +259,8 @@ function HomeComponent() {
         // obtenemos los datos solicitados (solamente si se tienen todos los
         // filtros necesarios)
         if (Object.values(filters).every((value) => value)) {
-            const urlFilters = new URLSearchParams({ ...filters });
+            const urlFilters = new URLSearchParams();
+            filters.forEach((filter) => urlFilters.append('filter', filterToString(filter)));
             fetch(
                 `/api/comuna/${validComunaName}/${dataType}-data/?${urlFilters.toString()}`,
             )
@@ -294,7 +289,7 @@ function HomeComponent() {
 
     /**
      * Realiza un zoom a la bounding box solicitada.
-     * 
+     *
      * @param bbox Bounding box a la cual hacer zoom.
      * @param transitionDuration Duración de la transición (por defecto, 1.5
      * segundos).
@@ -346,7 +341,7 @@ function HomeComponent() {
                     comunaName: undefined,
                     dataType,
                     view,
-                    ...filters,
+                    filter: selectedFilters.filter((filter) => filter.variable && filter.catX).map(filterToString),
                 },
             });
         }
@@ -357,7 +352,7 @@ function HomeComponent() {
      * `dataType` y `view` con valores por defecto si los valores recibidos no
      * son válidos.
      */
-    const handleSubmit = ({ comunaName, dataType, view, ...filters }: DataSearch) => {
+    const handleSubmit = ({ comunaName, dataType, view, filter }: DataSearch) => {
         navigate({
             to: '/',
             replace: true,
@@ -365,7 +360,7 @@ function HomeComponent() {
                 comunaName,
                 dataType: isDataType(dataType) ? dataType : 'manzent',
                 view: isView(view) ? view : 'conteo',
-                ...filters,
+                filter,
             },
         });
     };
@@ -377,17 +372,19 @@ function HomeComponent() {
         event.preventDefault();
         if (
             selectedComuna &&
-            Object.values(selectedFilters).every((value) => value !== '')
+            Object.values(selectedFilters).every(
+                (filter) => filter.variable !== '' && filter.catX !== '',
+            )
         ) {
             handleSubmit({
                 comunaName: selectedComuna,
                 dataType: selectedDataType,
                 view: selectedView,
-                ...selectedFilters,
+                filter: selectedFilters.map(filterToString),
             });
         }
     };
-    
+
     // al clickear una comuna, consultamos por ella, manteniendo los demás
     // parámetros (tipo de dato, vista, filtros) iguales
     const onClickGeoJson = useCallback(
@@ -399,7 +396,7 @@ function HomeComponent() {
                     comunaName: newComuna,
                     dataType: dataType,
                     view: view,
-                    ...filters,
+                    filter: filters.map(filterToString),
                 });
             }
         },
@@ -544,14 +541,12 @@ function HomeComponent() {
                 <Form
                     comunasByRegion={comunasByRegion}
                     variablesList={variablesList}
+                    maxFilters={MAX_FILTERS}
                     selectedRegion={selectedRegion}
                     selectedComuna={selectedComuna}
                     selectedDataType={selectedDataType}
                     selectedView={selectedView}
-                    selectedVariable1={selectedFilters.var1}
-                    selectedCategory1={selectedFilters.cat1}
-                    selectedVariable2={selectedFilters.var2}
-                    selectedCategory2={selectedFilters.cat2}
+                    selectedFilters={selectedFilters}
                     onRegionChange={setSelectedRegion}
                     onComunaChange={setSelectedComuna}
                     onDataTypeChange={(newType) =>
@@ -560,45 +555,17 @@ function HomeComponent() {
                     onViewChange={(newView) =>
                         setSelectedView(isView(newView) ? newView : 'conteo')
                     }
-                    onVariable1Change={(variable) => {
-                        // si var1 pasa a ser igual a var2, borramos var2 (pno
-                        // tiene sentido consultar por la misma variable dos
-                        // veces)
-                        if (variable === selectedFilters.var2) {
-                            setSelectedFilters({
-                                ...selectedFilters,
-                                var2: '',
-                                cat2: '',
-                            });
-                        } else {
-                            // si cambia la variable, se borra la categoría
-                            // anteriormente seleccionada para esa variable
-                            setSelectedFilters({
-                                ...selectedFilters,
-                                var1: variable,
-                                cat1: '',
-                            });
-                        }
+                    onFilterChange={(index, field, value) => {
+                        setSelectedFilters((filters) =>
+                            filters.map((filter, filterIndex) => {
+                                if (filterIndex !== index) return filter;
+                                if (field === 'variable') {
+                                    return { variable: value, catX: '' };
+                                }
+                                return { ...filter, [field]: value };
+                            }),
+                        );
                     }}
-                    onCategory1Change={(category) =>
-                        setSelectedFilters({
-                            ...selectedFilters,
-                            cat1: category,
-                        })
-                    }
-                    onVariable2Change={(variable) =>
-                        setSelectedFilters({
-                            ...selectedFilters,
-                            var2: variable,
-                            cat2: '',
-                        })
-                    }
-                    onCategory2Change={(category) =>
-                        setSelectedFilters({
-                            ...selectedFilters,
-                            cat2: category,
-                        })
-                    }
                     onSubmit={handleFormSubmit}
                 />
             </aside>

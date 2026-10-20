@@ -29,3 +29,12 @@ export const MAX_VALUES_DEFAULT: MaxValues = {
     densidad: 0,
     porcentaje: 0,
 };
+
+/**
+ * Filtros para los datos recibidos.
+ */
+export type Filter = {
+    variable: string;
+    catX: string;
+    catY?: string;
+};

@@ -186,6 +186,25 @@ def getComunaData(
     return jsonify(payload)
 
 
+def getFiltersFromRequest() -> tuple[str, str, str, str]:
+    """
+    Obtiene los dos filtros requeridos por una consulta de datos.
+    """
+    filter_strings = request.args.getlist("filter")
+    if len(filter_strings) != 2:
+        abort(400, "NoFilter")
+
+    parsed_filters = []
+    for filter_string in filter_strings:
+        parts = filter_string.split(":")
+        if len(parts) != 2 or not all(parts):
+            abort(400, "InvalidFilter")
+        parsed_filters.append(parts)
+
+    (var1, cat1), (var2, cat2) = parsed_filters
+    return var1, cat1, var2, cat2
+
+
 @app.route("/api/comuna/<comuna>/manzent-data")
 def getComunaManzentData(comuna: str):
     """
@@ -193,10 +212,7 @@ def getComunaManzentData(comuna: str):
     comuna.
     """
 
-    var1 = request.args.get("var1")
-    cat1 = request.args.get("cat1")
-    var2 = request.args.get("var2")
-    cat2 = request.args.get("cat2")
+    var1, cat1, var2, cat2 = getFiltersFromRequest()
     return getComunaData(comuna, stats_manzent_grouped, var1, cat1, var2, cat2)
 
 

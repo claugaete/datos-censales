@@ -326,8 +326,6 @@ function HomeComponent() {
                     }
                     const { legend, data } = dataWithLegend;
 
-                    console.log(legend);
-
                     setLegend(legend);
                     setDataRecordsById(
                         Object.fromEntries(data.map((r) => [r.MANZENT ?? r.hex_id, r])),
@@ -463,15 +461,42 @@ function HomeComponent() {
      * datos asociado a la ID.
      */
     function getTooltipData(id: string) {
+        function getCountDensityPercentage(
+            conteo: number | undefined,
+            densidad: number | undefined,
+            porcentaje: number | undefined | null,
+        ) {
+            return (
+                `Población filtrada: ${numberToString(conteo, ' hab.')}\n` +
+                `Densidad: ${numberToString(densidad, ' hab./km²')}\n` +
+                `Porcentaje del total: ${numberToString(porcentaje, '%', 100)}`
+            );
+        }
+
         const record = dataRecordsById[id];
         if (!record) return null;
         return (
             `ID: ${record.MANZENT ?? record.hex_id}\n` +
             `Población total: ${numberToString(record.poblacion, ' hab.')}\n` +
             `Área: ${numberToString(record.area, ' m²', 1_000_000)}\n` +
-            `Población filtrada: ${numberToString(record.conteo, ' hab.')}\n` +
-            `Densidad: ${numberToString(record.densidad, ' hab./km²')}\n` +
-            `Porcentaje del total: ${numberToString(record.porcentaje, '%', 100)}`
+            (isBivariate
+                ? 'X:\n' +
+                  getCountDensityPercentage(
+                      record.X?.conteo,
+                      record.X?.densidad,
+                      record.X?.porcentaje,
+                  ) +
+                  '\nY:\n' +
+                  getCountDensityPercentage(
+                      record.Y?.conteo,
+                      record.Y?.densidad,
+                      record.Y?.porcentaje,
+                  )
+                : getCountDensityPercentage(
+                      record.conteo,
+                      record.densidad,
+                      record.porcentaje,
+                  ))
         );
     }
 

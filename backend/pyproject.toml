@@ -7,6 +7,7 @@ dependencies = [
     "flask-cors>=6.0.5",
     "geopandas>=1.1.4",
     "h3>=4.5.0",
+    "mapclassify>=2.11.0",
     "pandas>=3.0.5",
     "pyarrow>=25.0.1",
     "requests>=2.34.2",

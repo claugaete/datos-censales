@@ -192,6 +192,31 @@ export function Form({
                                     ))}
                                 </select>
                             </label>
+                            { index == 0 && (
+                                <label
+                                    className="flex flex-col gap-1 text-sm font-medium text-slate-700"
+                                    htmlFor={`category${index}`}
+                                >
+                                    Categoría a Comparar
+                                    <select
+                                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                        id={`category${index}`}
+                                        value={filter.catY}
+                                        onChange={(event) =>
+                                            onFilterChange(index, 'catY', event.target.value)
+                                        }
+                                        disabled={!filter.variable}
+                                    >
+                                        <option value="">Selecciona una categoría</option>
+                                        {(variablesList[filter.variable] ?? []).map((category) => (
+                                            <option key={category} value={category}>
+                                                {category}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                            )}
+
                         </div>
                     );
                 })}

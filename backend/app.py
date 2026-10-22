@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 from flask import Flask, abort, jsonify, make_response, request, send_from_directory
 from flask_cors import CORS
+from mapclassify import Quantiles
 
 app = Flask(__name__)
 app.url_map.strict_slashes = False
@@ -106,13 +107,8 @@ def getComunaManzentGeom(comuna: str):
     return send_from_directory(MANZENT_GEOM_PATH, f"{comuna}.fgb")
 
 
-def getComunaData(
-    comuna: str,
-    comuna_data_dict: dict[str, pd.DataFrame],
-    var1: str,
-    cat1: str,
-    var2: str,
-    cat2: str,
+def getUnivariateComunaData(
+    comuna: str, comuna_data_dict: dict[str, pd.DataFrame], filters: list[list[str]]
 ):
     """
     Obtiene los siguientes datos para cada "celda" de una comuna dada:
@@ -135,6 +131,8 @@ def getComunaData(
     # damos vuelta variables si es necesario (abortamos si una de las
     # variables no existe)
     try:
+        var1, cat1 = filters[0]
+        var2, cat2 = filters[1]
         if cruces_variables.index(var1) > cruces_variables.index(var2):
             var1, var2 = var2, var1
             cat1, cat2 = cat2, cat1
@@ -186,34 +184,130 @@ def getComunaData(
     return jsonify(payload)
 
 
-def getFiltersFromRequest() -> tuple[str, str, str, str]:
+def getBivariateComunaData(
+    comuna: str, comuna_data_dict: dict[str, pd.DataFrame], filters: list[list[str]]
+):
+    """
+    Obtiene los siguientes datos para cada "celda" de una comuna dada:
+
+    - La población total y superficie de la "celda".
+    - El conteo de personas para las cuales
+        - `var1` toma el valor `catX` y `var2` toma el valor `cat2`.
+        - `var1` toma el valor `catY` y `var2` toma el valor `cat2`.
+    - La densidad (superficial) de personas que cumplen cada una de las
+      condiciones anteriores.
+    - El porcentaje de la población total que representan las personas que
+      cumplen cada una de las condiciones anteriores.
+
+    Además, divide cada una de estas tres distribuciones en tres "bins",
+    entregando los límites entre bins.
+    """
+
+    # obtenemos data general de cada manzent
+    general_data = comuna_data_dict.get(comuna)
+    if general_data is None:
+        abort(404, "NoComuna")
+
+    # damos vuelta variables si es necesario (abortamos si una de las
+    # variables no existe)
+    try:
+        var1, catX, catY = filters[0]
+        var2, cat2 = filters[1]
+        reversed = cruces_variables.index(var1) > cruces_variables.index(var2)
+    except ValueError:
+        abort(404, "NoVar")
+
+    # leemos los conteos solicitados
+    try:
+        count_data_X = (
+            pd.read_parquet(
+                CRUCES_PATH / f"cruces_{comunas_cut.loc[comuna]}.parquet",
+                filters=[
+                    ("var2" if reversed else "var1", "==", var1),
+                    ("cat2" if reversed else "cat1", "==", catX),
+                    ("var1" if reversed else "var2", "==", var2),
+                    ("cat1" if reversed else "cat2", "==", cat2),
+                ],
+            )
+            .set_index("MANZENT")[["conteo"]]
+            .fillna(0)
+            .astype(float)
+        )
+        count_data_Y = (
+            pd.read_parquet(
+                CRUCES_PATH / f"cruces_{comunas_cut.loc[comuna]}.parquet",
+                filters=[
+                    ("var2" if reversed else "var1", "==", var1),
+                    ("cat2" if reversed else "cat1", "==", catY),
+                    ("var1" if reversed else "var2", "==", var2),
+                    ("cat1" if reversed else "cat2", "==", cat2),
+                ],
+            )
+            .set_index("MANZENT")[["conteo"]]
+            .fillna(0)
+            .astype(float)
+        )
+    except FileNotFoundError:
+        abort(404, "NoData")
+    if len(count_data_X) == 0 or len(count_data_Y) == 0:
+        abort(404, "NoCat")
+
+    legend = {}
+
+    for axis, count_data in zip(("X", "Y"), (count_data_X, count_data_Y)):
+        # hay que hacer un dropna porque en algunos casos la "manzana" con
+        # mayor población es una manzana que en verdad no existe (9999), con
+        # lo cual la leyenda queda mal
+        count_data["densidad"] = count_data["conteo"] / general_data["area"]
+        count_data["porcentaje"] = count_data["conteo"] / general_data["poblacion"]
+
+        bins = {
+            column: Quantiles(count_data[column].dropna(), k=3).bins.tolist()
+            for column in ("conteo", "densidad", "porcentaje")
+        }
+
+        legend[axis] = bins
+
+        general_data[axis] = general_data.index.map(count_data.to_dict(orient="index"))
+
+    data_json = json.loads(general_data.to_json(orient="records"))
+
+    payload = {
+        "legend": legend,
+        "data": data_json,
+    }
+    return jsonify(payload)
+
+
+def getFiltersFromRequest() -> list[list[str]]:
     """
     Obtiene los dos filtros requeridos por una consulta de datos.
     """
     filter_strings = request.args.getlist("filter")
     if len(filter_strings) != 2:
-        abort(400, "NoFilter")
+        abort(400, "InvalidFilterLength")
 
     parsed_filters = []
     for filter_string in filter_strings:
         parts = filter_string.split(":")
-        if len(parts) != 2 or not all(parts):
-            abort(400, "InvalidFilter")
+        if len(parts) not in (2, 3) or not all(parts):
+            abort(400, "InvalidFilterContent")
         parsed_filters.append(parts)
 
-    (var1, cat1), (var2, cat2) = parsed_filters
-    return var1, cat1, var2, cat2
+    return parsed_filters
 
 
-@app.route("/api/comuna/<comuna>/manzent-data")
+@app.route("/api/comuna/<comuna>/manzent-data/")
 def getComunaManzentData(comuna: str):
     """
     Obtiene los datos de `getComunaData` para cada manzana/entidad de una
     comuna.
     """
 
-    var1, cat1, var2, cat2 = getFiltersFromRequest()
-    return getComunaData(comuna, stats_manzent_grouped, var1, cat1, var2, cat2)
+    filters = getFiltersFromRequest()
+    if len(filters[0]) == 3:
+        return getBivariateComunaData(comuna, stats_manzent_grouped, filters)
+    return getUnivariateComunaData(comuna, stats_manzent_grouped, filters)
 
 
 @app.route("/api/comuna/<comuna>/h3-data")

@@ -356,6 +356,7 @@ dependencies = [
     { name = "flask-cors" },
     { name = "geopandas" },
     { name = "h3" },
+    { name = "mapclassify" },
     { name = "pandas" },
     { name = "pyarrow" },
     { name = "requests" },
@@ -376,6 +377,7 @@ requires-dist = [
     { name = "flask-cors", specifier = ">=6.0.5" },
     { name = "geopandas", specifier = ">=1.1.4" },
     { name = "h3", specifier = ">=4.5.0" },
+    { name = "mapclassify", specifier = ">=2.11.0" },
     { name = "pandas", specifier = ">=3.0.5" },
     { name = "pyarrow", specifier = ">=25.0.1" },
     { name = "requests", specifier = ">=2.34.2" },
@@ -739,6 +741,22 @@ wheels = [
 ]
 
 [[package]]
+name = "mapclassify"
+version = "2.11.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "networkx" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "scikit-learn" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/42/6f/eeaeb11eba31c3b68c9819849dc9ec0dc69f743b34c68e03db50d5585af7/mapclassify-2.11.0.tar.gz", hash = "sha256:85dbfe747e5b5aed1f1fd41ef5de0c0ab8322227ee308191a44fff12c59c197d", size = 5745395, upload-time = "2026-08-11T20:09:38.877Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/46/2d/477fbe5b2dcc1960d28181fb96fb50dd39315ae61a6817351c29ef49f9a1/mapclassify-2.11.0-py3-none-any.whl", hash = "sha256:a510178db75c9b12db3207d748993e0cc5be4132171a4adc42d0b723515352b1", size = 478993, upload-time = "2026-08-11T20:09:36.999Z" },
+]
+
+[[package]]
 name = "markdown-it-py"
 version = "4.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -927,6 +945,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/b4/73/731debf26e27e0a0323d7bda270dc2f634b398e38f040a09da1f4351d0aa/nest_asyncio2-1.7.2.tar.gz", hash = "sha256:1921d70b92cc4612c374928d081552efb59b83d91b2b789d935c665fa01729a8", size = 14743, upload-time = "2026-02-13T00:34:04.386Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c5/3c/3179b85b0e1c3659f0369940200cd6d0fa900e6cefcc7ea0bc6dd0e29ffb/nest_asyncio2-1.7.2-py3-none-any.whl", hash = "sha256:f5dfa702f3f81f6a03857e9a19e2ba578c0946a4ad417b4c50a24d7ba641fe01", size = 7843, upload-time = "2026-02-13T00:34:02.691Z" },
+]
+
+[[package]]
+name = "networkx"
+version = "3.7"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/dc/76/3af777226b63a5e64a6b36b1ec5855c14e2b94a37096d4760e595fc43511/networkx-3.7.tar.gz", hash = "sha256:fd77a511bd90f39f3d016351345b52cf5319b813bdca01de3f755d3cca62e96a", size = 1866482, upload-time = "2026-09-21T16:45:16.974Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7e/cd/fe58041e9011f307c490e3e17dd48cc516448f7c698a3f2d9d9d65d7e6a8/networkx-3.7-py3-none-any.whl", hash = "sha256:e3fd2c13a7814cee3746340d8d7f8598a67f16a58bf47fb7f8793fab6efca1b0", size = 2142205, upload-time = "2026-09-21T16:45:14.609Z" },
 ]
 
 [[package]]

@@ -17,8 +17,11 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {
     DataType,
-    MAX_VALUES_DEFAULT,
-    MaxValues,
+    UNIVARIATE_MAX_VALUES_DEFAULT,
+    BIVARIATE_BINS_DEFAULT,
+    UnivariateMaxValues,
+    BivariateBins,
+    Legend,
     ViewType,
     isDataType,
     isView,
@@ -28,6 +31,11 @@ setWorkerUrl(workerUrl);
 
 // definiciones de colores para la visualización
 const scale: Scale = chroma.scale('Viridis');
+const bivariateBins = [
+    ['#e8e8e8', '#ace4e4', '#5ac8c8'],
+    ['#dfb0d6', '#a5add3', '#5698b9'],
+    ['#be64ac', '#8c62aa', '#3b4994'],
+];
 const NAN_COLOR: [number, number, number] = [0, 0, 0];
 
 /**
@@ -69,9 +77,19 @@ type DataRecord = {
     hex_id?: string;
     poblacion: number;
     area: number;
-    conteo: number;
-    densidad: number;
-    porcentaje: number | null;
+    conteo?: number;
+    densidad?: number;
+    porcentaje?: number | null;
+    X?: {
+        conteo: number;
+        densidad: number;
+        porcentaje: number | null;
+    };
+    Y?: {
+        conteo: number;
+        densidad: number;
+        porcentaje: number | null;
+    };
 };
 /**
  * Arreglo de datos, conteniendo la información de una comuna.
@@ -86,11 +104,11 @@ type DataRecordsById = Record<string, DataRecord>;
 
 /**
  * Información recibida al solicitar los datos de una comuna. Contiene el
- * arreglo correspondiente, junto con los valores máximos para cada una de las
- * tres columnas a visualizar.
+ * arreglo correspondiente, junto con los valores asociados a la leyenda para
+ * cada una de las tres columnas a visualizar.
  */
 type DataRecordsWithLegend = {
-    maxValues: MaxValues;
+    legend: Legend;
     data: DataRecordsArray;
 };
 
@@ -112,17 +130,42 @@ function isValidComuna(
 }
 
 /**
- * Obtiene el color asociado a un cierto valor.
+ * Obtiene el color asociado a un cierto valor, para una sola variable.
  *
  * @param value El valor de la celda.
  * @param maxValue El valor máximo entre las celdas (asociado al color máximo
  * de la escala).
  * @returns Color asociado al valor, en formato RGB.
  */
-function getColor(value: number | null, maxValue: number) {
+function getUnivariateColor(value: number | null, maxValue: number) {
     if (typeof value !== 'number') return NAN_COLOR;
     const fraction = maxValue > 0 ? value / maxValue : 0;
     return scale(fraction).rgb() as [number, number, number];
+}
+
+/**
+ * Obtiene el color asociado a un cierto valor, para dos variables.
+ *
+ * @param valueX El valor de la celda para la variable X.
+ * @param valueY El valor de la celda para la variable Y.
+ * @param binsX La cota superior para cada uno de los "grupos" en los que se
+ * divide la variable X.
+ * @param binsY La cota superior para cada uno de los "grupos" en los que se
+ * divide la variable Y.
+ * @returns Color asociado al valor, en formato RGB.
+ */
+function getBivariateColor(
+    valueX: number | null,
+    valueY: number | null,
+    binsX: [number, number, number],
+    binsY: [number, number, number],
+) {
+    if (typeof valueX !== 'number' || typeof valueY !== 'number') return NAN_COLOR;
+
+    const colorX = valueX <= binsX[0] ? 0 : valueX <= binsX[1] ? 1 : 2;
+    const colorY = valueY <= binsY[0] ? 0 : valueY <= binsY[1] ? 1 : 2;
+
+    return chroma(bivariateBins[colorY][colorX]).rgb() as [number, number, number];
 }
 
 function filterToString(filter: Filter) {
@@ -167,11 +210,13 @@ function HomeComponent() {
         const seen = new Set<string>();
         return (filterParamKey ? filterParamKey.split('\0') : [])
             .map(stringToFilter)
-            .filter((f) => !seen.has(f.variable) && seen.add(f.variable));
+            .filter((f) => !seen.has(f.variable) && seen.add(f.variable))
+            .slice(0, MAX_FILTERS);
     }, [filterParamKey]);
-    const visibleFilters = filters.slice(0, MAX_FILTERS);
     const dataType = dataTypeParam ?? 'manzent';
     const view = viewParam ?? 'conteo';
+    const isBivariate = filters.length > 0 && filters[0]['catY'] !== undefined;
+
     const navigate = useNavigate();
 
     const [variablesList, setVariablesList] = useState<VariablesList>({});
@@ -180,7 +225,9 @@ function HomeComponent() {
     const [dataRecordsById, setDataRecordsById] = useState<DataRecordsById>({});
     const [dataAvailable, setDataAvailable] = useState(false);
 
-    const [maxValues, setMaxValues] = useState(MAX_VALUES_DEFAULT);
+    const [legend, setLegend] = useState(
+        isBivariate ? BIVARIATE_BINS_DEFAULT : UNIVARIATE_MAX_VALUES_DEFAULT,
+    );
 
     // campos del formulario
     const [selectedRegion, setSelectedRegion] = useState('');
@@ -190,7 +237,7 @@ function HomeComponent() {
     const [selectedFilters, setSelectedFilters] = useState<Filter[]>(() =>
         Array.from(
             { length: MAX_FILTERS },
-            (_, index) => visibleFilters[index] ?? { variable: '', catX: '' },
+            (_, index) => filters[index] ?? { variable: '', catX: '' },
         ),
     );
 
@@ -253,14 +300,16 @@ function HomeComponent() {
         );
         setSelectedRegion(matchingRegion?.[0] ?? '');
 
-        setMaxValues(MAX_VALUES_DEFAULT);
+        setLegend(isBivariate ? BIVARIATE_BINS_DEFAULT : UNIVARIATE_MAX_VALUES_DEFAULT);
         setDataAvailable(false);
 
         // obtenemos los datos solicitados (solamente si se tienen todos los
         // filtros necesarios)
         if (Object.values(filters).every((value) => value)) {
             const urlFilters = new URLSearchParams();
-            filters.forEach((filter) => urlFilters.append('filter', filterToString(filter)));
+            filters.forEach((filter) =>
+                urlFilters.append('filter', filterToString(filter)),
+            );
             fetch(
                 `/api/comuna/${validComunaName}/${dataType}-data/?${urlFilters.toString()}`,
             )
@@ -275,9 +324,11 @@ function HomeComponent() {
                     if (!dataWithLegend || comunaNameRef.current !== comunaName) {
                         return;
                     }
-                    const { maxValues, data } = dataWithLegend;
+                    const { legend, data } = dataWithLegend;
 
-                    setMaxValues(maxValues);
+                    console.log(legend);
+
+                    setLegend(legend);
                     setDataRecordsById(
                         Object.fromEntries(data.map((r) => [r.MANZENT ?? r.hex_id, r])),
                     );
@@ -341,7 +392,9 @@ function HomeComponent() {
                     comunaName: undefined,
                     dataType,
                     view,
-                    filter: selectedFilters.filter((filter) => filter.variable && filter.catX).map(filterToString),
+                    filter: selectedFilters
+                        .filter((filter) => filter.variable && filter.catX)
+                        .map(filterToString),
                 },
             });
         }
@@ -404,17 +457,6 @@ function HomeComponent() {
     );
 
     /**
-     * Retorna el dato asociado a la vista actual, para una manzana/entidad.
-     * @param id ID de la manzana/entidad.
-     * @returns El dato asociado a la vista actual; nulo si no existe.
-     */
-    function getManzentValue(id: string) {
-        const record = dataRecordsById[id];
-        if (!record) return null;
-        return typeof record[view] === 'number' ? record[view] : null;
-    }
-
-    /**
      * Retorna el texto del tooltip para una manzana/entidad/celda.
      * @param id ID de la manzana/entidad/celda.
      * @returns Texto plano con todos los datos asociados; nulo si no existen
@@ -465,6 +507,24 @@ function HomeComponent() {
         [getTooltip],
     );
 
+    const getColor = useCallback(
+        (d: DataRecord) => {
+            if (isBivariate) {
+                const bivariateLegend = legend as BivariateBins;
+                return getBivariateColor(
+                    d.X?.[view] ?? null,
+                    d.Y?.[view] ?? null,
+                    bivariateLegend.X[view],
+                    bivariateLegend.Y[view],
+                );
+            } else {
+                const univariateLegend = legend as UnivariateMaxValues;
+                return getUnivariateColor(d[view] ?? null, univariateLegend[view]);
+            }
+        },
+        [legend, view, isBivariate],
+    );
+
     // capa que contiene los datos a mostrar, pueden ser celdas de H3
     // (cargadas con H3HexagonLayer directamente desde `dataRecordsArray`) o
     // manzanas/entidades (se cargan las geometrías por separado)
@@ -482,9 +542,9 @@ function HomeComponent() {
                     lineWidthMinPixels: 0,
                     opacity: 0.4,
                     getLineColor: [60, 60, 60],
-                    getFillColor: (d) => getColor(d[view], maxValues[view]),
+                    getFillColor: (d) => getColor(d),
                     updateTriggers: {
-                        getFillColor: [maxValues, view],
+                        getFillColor: [legend, view],
                     },
                     pickable: true,
                 })
@@ -498,12 +558,9 @@ function HomeComponent() {
                     opacity: 0.4,
                     getLineColor: [60, 60, 60],
                     getFillColor: (d) =>
-                        getColor(
-                            getManzentValue(d.properties.MANZENT),
-                            maxValues[view],
-                        ),
+                        getColor(dataRecordsById[d.properties.MANZENT]),
                     updateTriggers: {
-                        getFillColor: [maxValues, view],
+                        getFillColor: [legend, view],
                     },
                     pickable: true,
                 });
@@ -572,7 +629,7 @@ function HomeComponent() {
             <MapView
                 viewport={viewport}
                 layers={layers}
-                maxValues={maxValues}
+                maxValues={legend as UnivariateMaxValues}
                 view={view}
                 scale={scale}
                 tooltip={tooltip}

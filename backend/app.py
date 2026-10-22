@@ -180,7 +180,7 @@ def getComunaData(
 
     data_json = json.loads(all_data.to_json(orient="records"))
     payload = {
-        "maxValues": max_values,
+        "legend": max_values,
         "data": data_json,
     }
     return jsonify(payload)

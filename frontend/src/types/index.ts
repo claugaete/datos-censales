@@ -23,12 +23,35 @@ export function isView(value: unknown): value is ViewType {
 /**
  * Valor máximo de cada vista posible en los datos solicitados.
  */
-export type MaxValues = Record<ViewType, number>;
-export const MAX_VALUES_DEFAULT: MaxValues = {
+export type UnivariateMaxValues = Record<ViewType, number>;
+export const UNIVARIATE_MAX_VALUES_DEFAULT: UnivariateMaxValues = {
     conteo: 0,
     densidad: 0,
     porcentaje: 0,
 };
+
+/**
+ * Rangos para cada una de las variables (en el caso bivariado), para cada
+ * vista posible en los datos solicitados.
+ */
+export type BivariateBins = {
+    X: Record<ViewType, [number, number, number]>;
+    Y: Record<ViewType, [number, number, number]>;
+};
+export const BIVARIATE_BINS_DEFAULT: BivariateBins = {
+    X: {
+        conteo: [0, 0, 0],
+        densidad: [0, 0, 0],
+        porcentaje: [0, 0, 0],
+    },
+    Y: {
+        conteo: [0, 0, 0],
+        densidad: [0, 0, 0],
+        porcentaje: [0, 0, 0],
+    },
+};
+
+export type Legend = UnivariateMaxValues | BivariateBins;
 
 /**
  * Filtros para los datos recibidos.

@@ -6,7 +6,7 @@ import Map, { StyleSpecification } from 'react-map-gl/maplibre';
 import { Scale } from 'chroma-js';
 
 import basemapStyle from '../../data/style.json';
-import { MaxValues, ViewType } from '../types';
+import { UnivariateMaxValues, ViewType } from '../types';
 
 // mapeo de cada tipo de vista con el texto a mostrar en la leyenda
 const LEGEND_LABELS: Record<ViewType, string> = {
@@ -24,7 +24,7 @@ type Tooltip = {
 type MapViewProps = {
     viewport: MapViewState;
     layers: Layer[];
-    maxValues: MaxValues;
+    maxValues: UnivariateMaxValues;
     view: ViewType;
     scale: Scale;
     tooltip?: Tooltip;

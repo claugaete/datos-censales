@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import chroma, { Scale } from 'chroma-js';
+import chroma from 'chroma-js';
 import { GeoJsonLayer } from '@deck.gl/layers';
 import { H3HexagonLayer, MVTLayer } from '@deck.gl/geo-layers';
 import { WebMercatorViewport, LinearInterpolator, MapViewState } from '@deck.gl/core';
@@ -11,7 +11,7 @@ import '@deck.gl/widgets/stylesheet.css';
 import { FlatGeobufLoader } from '@loaders.gl/flatgeobuf';
 
 import { Form } from '../components/Form';
-import { MapView, numberToString } from '../components/MapView';
+import { scale, NAN_COLOR, BIVARIATE_COLORS, MapView, numberToString } from '../components/MapView';
 import { setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -28,15 +28,6 @@ import {
     Filter,
 } from '../types';
 setWorkerUrl(workerUrl);
-
-// definiciones de colores para la visualización
-const scale: Scale = chroma.scale('Viridis');
-const bivariateBins = [
-    ['#e8e8e8', '#ace4e4', '#5ac8c8'],
-    ['#dfb0d6', '#a5add3', '#5698b9'],
-    ['#be64ac', '#8c62aa', '#3b4994'],
-];
-const NAN_COLOR: [number, number, number] = [0, 0, 0];
 
 /**
  * Todos los campos de una consulta a la aplicación (campos base + filtros).
@@ -165,7 +156,7 @@ function getBivariateColor(
     const colorX = valueX <= binsX[0] ? 0 : valueX <= binsX[1] ? 1 : 2;
     const colorY = valueY <= binsY[0] ? 0 : valueY <= binsY[1] ? 1 : 2;
 
-    return chroma(bivariateBins[colorY][colorX]).rgb() as [number, number, number];
+    return chroma(BIVARIATE_COLORS[colorY][colorX]).rgb() as [number, number, number];
 }
 
 function filterToString(filter: Filter) {
@@ -654,7 +645,8 @@ function HomeComponent() {
             <MapView
                 viewport={viewport}
                 layers={layers}
-                maxValues={legend as UnivariateMaxValues}
+                legend={legend}
+                filters={filters}
                 view={view}
                 scale={scale}
                 tooltip={tooltip}

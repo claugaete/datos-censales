@@ -9,9 +9,16 @@ import type { PickingInfo } from '@deck.gl/core';
 import type { MjolnirPointerEvent } from 'mjolnir.js';
 import '@deck.gl/widgets/stylesheet.css';
 import { FlatGeobufLoader } from '@loaders.gl/flatgeobuf';
+import toast from 'react-hot-toast';
 
 import { Form } from '../components/Form';
-import { scale, NAN_COLOR, BIVARIATE_COLORS, MapView, numberToString } from '../components/MapView';
+import {
+    scale,
+    NAN_COLOR,
+    BIVARIATE_COLORS,
+    MapView,
+    numberToString,
+} from '../components/MapView';
 import { setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -163,14 +170,12 @@ function filterToString(filter: Filter) {
     return `${filter.variable}:${filter.catX}${filter.catY ? `:${filter.catY}` : ''}`;
 }
 
-function stringToFilter(filterString: string): Filter {
-    const [variable, catX, catY, ...rest] = filterString.split(':');
-    if (!catX || rest.length > 0)
-        throw new Error(
-            `Length of strings after split must be 2 or 3, ` +
-                `not ${filterString.split(':').length}`,
-        );
-    return catY ? { variable, catX, catY } : { variable, catX };
+function stringToFilter(filterString: string, index: number): Filter {
+    const [variable, catX, catY] = filterString.split(':');
+    if (!catX) {
+        return { variable, catX: '' };
+    }
+    return catY && index === 0 ? { variable, catX, catY } : { variable, catX };
 }
 
 export const Route = createFileRoute('/')({
@@ -198,11 +203,7 @@ function HomeComponent() {
     } = useSearch({ from: '/' });
     const filterParamKey = filterParam.join('\0');
     const filters = useMemo(() => {
-        const seen = new Set<string>();
-        return (filterParamKey ? filterParamKey.split('\0') : [])
-            .map(stringToFilter)
-            .filter((f) => !seen.has(f.variable) && seen.add(f.variable))
-            .slice(0, MAX_FILTERS);
+        return (filterParamKey ? filterParamKey.split('\0') : []).map(stringToFilter);
     }, [filterParamKey]);
     const dataType = dataTypeParam ?? 'manzent';
     const view = viewParam ?? 'conteo';
@@ -301,13 +302,16 @@ function HomeComponent() {
             filters.forEach((filter) =>
                 urlFilters.append('filter', filterToString(filter)),
             );
-            fetch(
+            console.log(filters);
+            const promise = fetch(
                 `/api/comuna/${validComunaName}/${dataType}-data/?${urlFilters.toString()}`,
             )
-                .then((response) => {
+                .then(async (response) => {
                     // si la response falla, no generamos datos
-                    // TODO: agregar un toast explicando qué falló
-                    if (!response.ok) return;
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.message);
+                    }
                     return response.json();
                 })
                 .then((dataWithLegend: DataRecordsWithLegend) => {
@@ -323,7 +327,30 @@ function HomeComponent() {
                     );
                     setDataRecordsArray(data);
                     setDataAvailable(true);
+                })
+                .catch(({ message }: Error) => {
+                    if (message === 'NoVarCat') {
+                        toast.error('Alguna de las variables seleccionadas no existe');
+                    } else if (message === 'NoData') {
+                        toast.error('No se encontraron datos para la comuna');
+                    } else if (message === 'NoCat') {
+                        toast.error('Los filtros utilizados son excluyentes');
+                    } else if (message === 'InvalidFilterLength') {
+                        if (filters.length) {
+                            toast.error('El número de filtros es incorrecto');
+                        } else {
+                            toast('Agrega filtros para poder ver información', {
+                                icon: 'ℹ️',
+                                id: 'NoFilters',
+                            });
+                        }
+                    } else if (message === 'InvalidFilterContent') {
+                        toast.error('Alguno de los filtros es inválido');
+                    }
                 });
+            toast.promise(promise, {
+                loading: 'Cargando datos...',
+            });
         }
     }, [validComunaName, dataType, filters]);
 
@@ -374,6 +401,9 @@ function HomeComponent() {
         if (Object.keys(comunasByRegion).length === 0) return;
 
         if (!validComunaName) {
+            if (comunaName) {
+                toast.error('Selecciona una comuna válida.');
+            }
             navigate({
                 to: '/',
                 replace: true,

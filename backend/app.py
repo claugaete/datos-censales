@@ -7,6 +7,7 @@ import pandas as pd
 from flask import Flask, abort, jsonify, make_response, request, send_from_directory
 from flask_cors import CORS
 from mapclassify import Quantiles
+from werkzeug.exceptions import HTTPException
 
 app = Flask(__name__)
 app.url_map.strict_slashes = False
@@ -35,6 +36,16 @@ stats_h3_grouped = {
     comuna: group.set_index("hex_id", drop=False).drop(columns="COMUNA")
     for comuna, group in stats_h3.groupby("COMUNA")
 }
+
+
+@app.errorhandler(HTTPException)
+def handle_exception(e):
+    return jsonify(
+        {
+            "error": e.name,
+            "message": e.description,
+        }
+    ), e.code
 
 
 @app.route("/api/")
@@ -288,9 +299,9 @@ def getFiltersFromRequest() -> list[list[str]]:
         abort(400, "InvalidFilterLength")
 
     parsed_filters = []
-    for filter_string in filter_strings:
+    for i, filter_string in enumerate(filter_strings):
         parts = filter_string.split(":")
-        if len(parts) not in (2, 3) or not all(parts):
+        if len(parts) not in (2, 3) or not all(parts) or (len(parts) == 3 and i != 0):
             abort(400, "InvalidFilterContent")
         parsed_filters.append(parts)
 

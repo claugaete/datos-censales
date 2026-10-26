@@ -139,67 +139,76 @@ export function Form({
             </label>
 
             <span className="text-sm font-medium text-slate-700">Filtros</span>
-            <fieldset className="flex flex-col gap-3 rounded-md border border-slate-200 p-3">
+            <fieldset className="flex flex-col gap-3 rounded-md border border-slate-300 p-3">
                 {Array.from({ length: maxFilters }, (_, index) => {
                     const filter = selectedFilters[index] ?? { variable: '', catX: '' };
 
                     return (
-                        <div className="flex flex-col gap-3" key={index}>
-                            <label
-                                className="flex flex-col gap-1 text-sm font-medium text-slate-700"
-                                htmlFor={`variable${index}`}
-                            >
-                                Variable {index + 1}
-                                <select
-                                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
-                                    id={`variable${index}`}
-                                    value={filter.variable}
-                                    onChange={(event) =>
-                                        onFilterChange(index, 'variable', event.target.value)
-                                    }
-                                    required
-                                >
-                                    <option value="">Selecciona una variable</option>
-                                    {variableNames
-                                        .map((variable) => (
-                                            <option key={variable} value={variable}>
-                                                {variable}
-                                            </option>
-                                        ))}
-                                </select>
-                            </label>
-
-                            <label
-                                className="flex flex-col gap-1 text-sm font-medium text-slate-700"
-                                htmlFor={`category${index}`}
-                            >
-                                Categoría {index + 1}
-                                <select
-                                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                                    id={`category${index}`}
-                                    value={filter.catX}
-                                    onChange={(event) =>
-                                        onFilterChange(index, 'catX', event.target.value)
-                                    }
-                                    disabled={!filter.variable}
-                                    required
-                                >
-                                    <option value="">Selecciona una categoría</option>
-                                    {(variablesList[filter.variable] ?? []).map((category) => (
-                                        <option key={category} value={category}>
-                                            {category}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
+                        <div
+                            className="flex flex-col gap-3 rounded-md border border-slate-200 p-3"
+                            key={index}
+                        >
+                            <div className="rounded-md p-2">
                                 <label
                                     className="flex flex-col gap-1 text-sm font-medium text-slate-700"
-                                    htmlFor={`category${index}`}
+                                    htmlFor={`variable${index}`}
                                 >
-                                    Categoría a Comparar
+                                    Variable {index + 1}
+                                    <select
+                                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                                        id={`variable${index}`}
+                                        value={filter.variable}
+                                        onChange={(event) =>
+                                            onFilterChange(index, 'variable', event.target.value)
+                                        }
+                                        required
+                                    >
+                                        <option value="">Selecciona una variable</option>
+                                        {variableNames
+                                            .map((variable) => (
+                                                <option key={variable} value={variable}>
+                                                    {variable}
+                                                </option>
+                                            ))}
+                                    </select>
+                                </label>
+                            </div>
+
+                            <div className="rounded-md p-2">
+                                <label
+                                    className="flex flex-col gap-1 text-sm font-medium text-slate-700"
+                                    htmlFor={`categoryX${index}`}
+                                >
+                                    Categoría X (obligatoria)
                                     <select
                                         className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                                        id={`category${index}`}
+                                        id={`categoryX${index}`}
+                                        value={filter.catX}
+                                        onChange={(event) =>
+                                            onFilterChange(index, 'catX', event.target.value)
+                                        }
+                                        disabled={!filter.variable}
+                                        required
+                                    >
+                                        <option value="">Selecciona una categoría</option>
+                                        {(variablesList[filter.variable] ?? []).map((category) => (
+                                            <option key={category} value={category}>
+                                                {category}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                            </div>
+
+                            <div className="rounded-md p-2">
+                                <label
+                                    className="flex flex-col gap-1 text-sm font-medium text-slate-700"
+                                    htmlFor={`categoryY${index}`}
+                                >
+                                    Categoría Y (opcional)
+                                    <select
+                                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                        id={`categoryY${index}`}
                                         value={filter.catY}
                                         onChange={(event) =>
                                             onFilterChange(index, 'catY', event.target.value)
@@ -214,6 +223,7 @@ export function Form({
                                         ))}
                                     </select>
                                 </label>
+                            </div>
 
                         </div>
                     );

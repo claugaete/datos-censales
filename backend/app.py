@@ -167,9 +167,9 @@ def getComunaCounts(
                     ("cat2", "==", cat2),
                 ],
             )
-            # solo manzanas válidas en la comuna
             .set_index("MANZENT")[["conteo"]]
-            .loc[lambda df: df.index.isin(general_data_comuna.index)]
+            # solo manzanas válidas en la comuna
+            .reindex(general_data_comuna.index)
             .fillna(0)
             .astype(float)
         )

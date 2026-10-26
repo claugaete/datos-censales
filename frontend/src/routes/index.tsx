@@ -346,6 +346,8 @@ function HomeComponent() {
                         }
                     } else if (message === 'InvalidFilterContent') {
                         toast.error('Alguno de los filtros es inválido');
+                    } else {
+                        toast.error('Hubo un error en la carga de datos');
                     }
                 });
             toast.promise(promise, {

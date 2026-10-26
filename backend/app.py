@@ -1,7 +1,9 @@
 import json
+import logging
 import math
 import sqlite3
 from pathlib import Path
+from typing import TypedDict
 
 import pandas as pd
 from flask import Flask, abort, jsonify, make_response, request, send_from_directory
@@ -12,6 +14,14 @@ from werkzeug.exceptions import HTTPException
 app = Flask(__name__)
 app.url_map.strict_slashes = False
 CORS(app)
+logger = logging.getLogger()
+
+
+class Filter(TypedDict):
+    var: str
+    catX: str
+    catY: str | None
+
 
 PROCESSED_DATA_PATH = Path(__file__).resolve().parent / "data" / "processed"
 MANZENT_GEOM_PATH = PROCESSED_DATA_PATH / "manzent_geom"
@@ -118,32 +128,27 @@ def getComunaManzentGeom(comuna: str):
     return send_from_directory(MANZENT_GEOM_PATH, f"{comuna}.fgb")
 
 
-def getUnivariateComunaData(
-    comuna: str, comuna_data_dict: dict[str, pd.DataFrame], filters: list[list[str]]
+def getComunaCounts(
+    comuna: str,
+    general_data_comuna: pd.DataFrame,
+    var1: str,
+    cat1: str,
+    var2: str,
+    cat2: str,
 ):
     """
     Obtiene los siguientes datos para cada "celda" de una comuna dada:
 
-    - La población total y superficie de la "celda".
     - El conteo de personas para las cuales `var1` toma el valor `cat1` y
       `var2` toma el valor `cat2`.
     - La densidad (superficial) de personas que cumplen la condición anterior.
     - El porcentaje de la población total que representan las personas que
       cumplen la condición.
-
-    Además, retorna el valor máximo para estas últimas tres variables.
     """
-
-    # obtenemos data general de cada manzent
-    general_data = comuna_data_dict.get(comuna)
-    if general_data is None:
-        abort(404, "NoComuna")
 
     # damos vuelta variables si es necesario (abortamos si una de las
     # variables no existe)
     try:
-        var1, cat1 = filters[0]
-        var2, cat2 = filters[1]
         if cruces_variables.index(var1) > cruces_variables.index(var2):
             var1, var2 = var2, var1
             cat1, cat2 = cat2, cat1
@@ -162,7 +167,9 @@ def getUnivariateComunaData(
                     ("cat2", "==", cat2),
                 ],
             )
-            .set_index("MANZENT")["conteo"]
+            # solo manzanas válidas en la comuna
+            .set_index("MANZENT")[["conteo"]]
+            .loc[lambda df: df.index.isin(general_data_comuna.index)]
             .fillna(0)
             .astype(float)
         )
@@ -171,16 +178,43 @@ def getUnivariateComunaData(
     if len(count_data) == 0:
         abort(404, "NoCat")
 
-    # hay que hacer un dropna porque en algunos casos la "manzana" con mayor
-    # población es una manzana que en verdad no existe (9999), con lo cual la
-    # leyenda queda mal
-    all_data = (
-        pd.concat([general_data, count_data], axis=1)
-        .dropna(subset=["poblacion"])
-        .fillna(0)
+    count_data["densidad"] = count_data["conteo"] / general_data_comuna["area"]
+    count_data["porcentaje"] = count_data["conteo"] / general_data_comuna["poblacion"]
+
+    return count_data
+
+
+def getUnivariateComunaData(
+    comuna: str, comuna_data_dict: dict[str, pd.DataFrame], filters: list[Filter]
+):
+    """
+    Obtiene los siguientes datos para cada "celda" de una comuna dada:
+
+    - La población total y superficie de la "celda".
+    - El conteo de personas que cumplen todos los filtros de `filters` (el
+      valor de cada `var` es igual a su respectivo `catX`).
+    - La densidad (superficial) de personas que cumplen la condición anterior.
+    - El porcentaje de la población total que representan las personas que
+      cumplen la condición.
+
+    Además, retorna el valor máximo para estas últimas tres variables.
+    """
+
+    # obtenemos data general de cada manzent
+    general_data = comuna_data_dict.get(comuna)
+    if general_data is None:
+        abort(404, "NoComuna")
+
+    count_data = getComunaCounts(
+        comuna,
+        general_data,
+        filters[0].get("var"),
+        filters[0].get("catX"),
+        filters[1].get("var"),
+        filters[1].get("catX"),
     )
-    all_data["densidad"] = all_data["conteo"] / all_data["area"]
-    all_data["porcentaje"] = all_data["conteo"] / all_data["poblacion"]
+
+    all_data = pd.concat([general_data, count_data], axis=1)
 
     max_values = {
         column: all_data[column].max()
@@ -196,15 +230,18 @@ def getUnivariateComunaData(
 
 
 def getBivariateComunaData(
-    comuna: str, comuna_data_dict: dict[str, pd.DataFrame], filters: list[list[str]]
+    comuna: str,
+    comuna_data_dict: dict[str, pd.DataFrame],
+    filters: list[dict[str, str]],
 ):
     """
     Obtiene los siguientes datos para cada "celda" de una comuna dada:
 
     - La población total y superficie de la "celda".
-    - El conteo de personas para las cuales
-        - `var1` toma el valor `catX` y `var2` toma el valor `cat2`.
-        - `var1` toma el valor `catY` y `var2` toma el valor `cat2`.
+    - Los siguientes conteos de personas:
+        - X: el valor de cada `var` es igual a su respectivo `catX`.
+        - Y: el valor de cada `var` es igual a su respectivo `catY` (o `catX`
+          si `catY` es nulo).
     - La densidad (superficial) de personas que cumplen cada una de las
       condiciones anteriores.
     - El porcentaje de la población total que representan las personas que
@@ -219,59 +256,27 @@ def getBivariateComunaData(
     if general_data is None:
         abort(404, "NoComuna")
 
-    # damos vuelta variables si es necesario (abortamos si una de las
-    # variables no existe)
-    try:
-        var1, catX, catY = filters[0]
-        var2, cat2 = filters[1]
-        reversed = cruces_variables.index(var1) > cruces_variables.index(var2)
-    except ValueError:
-        abort(404, "NoVar")
+    count_data_X = getComunaCounts(
+        comuna,
+        general_data,
+        filters[0].get("var"),
+        filters[0].get("catX"),
+        filters[1].get("var"),
+        filters[1].get("catX"),
+    )
 
-    # leemos los conteos solicitados
-    try:
-        count_data_X = (
-            pd.read_parquet(
-                CRUCES_PATH / f"cruces_{comunas_cut.loc[comuna]}.parquet",
-                filters=[
-                    ("var2" if reversed else "var1", "==", var1),
-                    ("cat2" if reversed else "cat1", "==", catX),
-                    ("var1" if reversed else "var2", "==", var2),
-                    ("cat1" if reversed else "cat2", "==", cat2),
-                ],
-            )
-            .set_index("MANZENT")[["conteo"]]
-            .fillna(0)
-            .astype(float)
-        )
-        count_data_Y = (
-            pd.read_parquet(
-                CRUCES_PATH / f"cruces_{comunas_cut.loc[comuna]}.parquet",
-                filters=[
-                    ("var2" if reversed else "var1", "==", var1),
-                    ("cat2" if reversed else "cat1", "==", catY),
-                    ("var1" if reversed else "var2", "==", var2),
-                    ("cat1" if reversed else "cat2", "==", cat2),
-                ],
-            )
-            .set_index("MANZENT")[["conteo"]]
-            .fillna(0)
-            .astype(float)
-        )
-    except FileNotFoundError:
-        abort(404, "NoData")
-    if len(count_data_X) == 0 or len(count_data_Y) == 0:
-        abort(404, "NoCat")
+    count_data_Y = getComunaCounts(
+        comuna,
+        general_data,
+        filters[0].get("var"),
+        filters[0].get("catY") or filters[0].get("catX"),
+        filters[1].get("var"),
+        filters[1].get("catY") or filters[1].get("catX"),
+    )
 
     legend = {}
 
     for axis, count_data in zip(("X", "Y"), (count_data_X, count_data_Y)):
-        # hay que hacer un dropna porque en algunos casos la "manzana" con
-        # mayor población es una manzana que en verdad no existe (9999), con
-        # lo cual la leyenda queda mal
-        count_data["densidad"] = count_data["conteo"] / general_data["area"]
-        count_data["porcentaje"] = count_data["conteo"] / general_data["poblacion"]
-
         bins = {
             column: Quantiles(count_data[column].dropna(), k=3).bins.tolist()
             for column in ("conteo", "densidad", "porcentaje")
@@ -290,20 +295,26 @@ def getBivariateComunaData(
     return jsonify(payload)
 
 
-def getFiltersFromRequest() -> list[list[str]]:
+def getFiltersFromRequest() -> list[Filter]:
     """
-    Obtiene los dos filtros requeridos por una consulta de datos.
+    Obtiene los filtros requeridos por una consulta de datos.
     """
     filter_strings = request.args.getlist("filter")
     if len(filter_strings) != 2:
         abort(400, "InvalidFilterLength")
 
     parsed_filters = []
-    for i, filter_string in enumerate(filter_strings):
+    for filter_string in filter_strings:
         parts = filter_string.split(":")
-        if len(parts) not in (2, 3) or not all(parts) or (len(parts) == 3 and i != 0):
+        if len(parts) not in (2, 3) or not all(parts):
             abort(400, "InvalidFilterContent")
-        parsed_filters.append(parts)
+        parsed_filters.append(
+            {
+                "var": parts[0],
+                "catX": parts[1],
+                "catY": parts[2] if len(parts) == 3 else None,
+            }
+        )
 
     return parsed_filters
 
@@ -316,7 +327,7 @@ def getComunaManzentData(comuna: str):
     """
 
     filters = getFiltersFromRequest()
-    if len(filters[0]) == 3:
+    if any(f["catY"] is not None for f in filters):
         return getBivariateComunaData(comuna, stats_manzent_grouped, filters)
     return getUnivariateComunaData(comuna, stats_manzent_grouped, filters)
 

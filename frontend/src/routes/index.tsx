@@ -170,12 +170,12 @@ function filterToString(filter: Filter) {
     return `${filter.variable}:${filter.catX}${filter.catY ? `:${filter.catY}` : ''}`;
 }
 
-function stringToFilter(filterString: string, index: number): Filter {
+function stringToFilter(filterString: string): Filter {
     const [variable, catX, catY] = filterString.split(':');
     if (!catX) {
         return { variable, catX: '' };
     }
-    return catY && index === 0 ? { variable, catX, catY } : { variable, catX };
+    return catY ? { variable, catX, catY } : { variable, catX };
 }
 
 export const Route = createFileRoute('/')({
@@ -207,7 +207,7 @@ function HomeComponent() {
     }, [filterParamKey]);
     const dataType = dataTypeParam ?? 'manzent';
     const view = viewParam ?? 'conteo';
-    const isBivariate = filters.length > 0 && filters[0]['catY'] !== undefined;
+    const isBivariate = filters.length > 0 && filters.some((f) => f.catY !== undefined);
 
     const navigate = useNavigate();
 
@@ -677,7 +677,6 @@ function HomeComponent() {
                 viewport={viewport}
                 layers={layers}
                 legend={legend}
-                filters={filters}
                 view={view}
                 scale={scale}
                 tooltip={tooltip}

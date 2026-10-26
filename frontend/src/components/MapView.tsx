@@ -7,7 +7,7 @@ import Map, { StyleSpecification } from 'react-map-gl/maplibre';
 import chroma, { Scale } from 'chroma-js';
 
 import basemapStyle from '../../data/style.json';
-import { BivariateBins, Filter, Legend, ViewType } from '../types';
+import { BivariateBins, Legend, ViewType } from '../types';
 
 // definiciones de colores para la visualización
 export const scale: Scale = chroma.scale('Viridis');
@@ -35,7 +35,6 @@ type MapViewProps = {
     viewport: MapViewState;
     layers: Layer[];
     legend: Legend;
-    filters: Filter[];
     view: ViewType;
     scale: Scale;
     tooltip?: Tooltip;
@@ -45,7 +44,7 @@ type MapViewProps = {
 
 /**
  * Convierte un número en una string, según la siguiente lógica:
- * 
+ *
  * - Si no es un número, retorna N/A.
  * - Si es un número:
  *   - Lo multiplica por `factor`.
@@ -53,7 +52,7 @@ type MapViewProps = {
  *   - Si no es entero, lo muestra con dos decimales.
  *   - Le agrega el sufijo `suffix` (notar que este sufijo no se agrega si el
  *     número es N/A).
- * 
+ *
  * @param n El número a mostrar.
  * @param suffix El sufijo a agregar (si el número existe).
  * @param factor El factor por el cual multiplicar el número.
@@ -117,23 +116,18 @@ function UnivariateLegend({
             />
             <div className="mt-1 flex justify-between text-gray-700">
                 <span>{view === 'porcentaje' ? '0%' : '0'}</span>
-                <span>{view === 'porcentaje' ? numberToString(maxValue, '%', 100) : numberToString(maxValue)}</span>
+                <span>
+                    {view === 'porcentaje'
+                        ? numberToString(maxValue, '%', 100)
+                        : numberToString(maxValue)}
+                </span>
             </div>
         </div>
     );
 }
 
-function BivariateLegend({
-    bins,
-    filters,
-    view,
-}: {
-    bins: BivariateBins;
-    filters: Filter[];
-    view: ViewType;
-}) {
+function BivariateLegend({ bins, view }: { bins: BivariateBins; view: ViewType }) {
     const [hoveredRange, setHoveredRange] = useState<string>();
-    const filter = filters[0];
     const formatBound = (value: number) =>
         view === 'porcentaje' ? numberToString(value, '%', 100) : numberToString(value);
     const xBounds = bins.X[view];
@@ -149,44 +143,52 @@ function BivariateLegend({
             aria-label="Leyenda bivariada"
             className="pointer-events-auto absolute bottom-2 left-2 z-2 rounded-xl bg-white px-3 py-2 text-xs shadow-sm"
         >
-            {hasBins && <div className="flex items-start gap-2">
-                <div>
-                    <div className="relative h-36 w-36 border border-gray-400">
-                        <div className="grid h-full w-full grid-cols-3 grid-rows-3">
-                            {[...BIVARIATE_COLORS].reverse().flatMap((row, rowIndex) =>
-                                row.map((color, columnIndex) => (
-                                    <div
-                                        aria-label={`X: ${range(xBounds, columnIndex)}, Y: ${range(yBounds, 2 - rowIndex)}`}
-                                        className="border border-white"
-                                        key={`${rowIndex}-${columnIndex}`}
-                                        style={{ backgroundColor: color }}
-                                        onMouseEnter={() =>
-                                            setHoveredRange(
-                                                `X: ${range(xBounds, columnIndex)}\nY: ${range(yBounds, 2 - rowIndex)}`,
-                                            )
-                                        }
-                                        onMouseLeave={() => setHoveredRange(undefined)}
-                                    />
-                                )),
+            {hasBins && (
+                <div className="flex items-start gap-2">
+                    <div>
+                        <div className="relative h-36 w-36 border border-gray-400">
+                            <div className="grid h-full w-full grid-cols-3 grid-rows-3">
+                                {[...BIVARIATE_COLORS]
+                                    .reverse()
+                                    .flatMap((row, rowIndex) =>
+                                        row.map((color, columnIndex) => (
+                                            <div
+                                                aria-label={`X: ${range(xBounds, columnIndex)}, Y: ${range(yBounds, 2 - rowIndex)}`}
+                                                className="border border-white"
+                                                key={`${rowIndex}-${columnIndex}`}
+                                                style={{ backgroundColor: color }}
+                                                onMouseEnter={() =>
+                                                    setHoveredRange(
+                                                        `X: ${range(xBounds, columnIndex)}\nY: ${range(yBounds, 2 - rowIndex)}`,
+                                                    )
+                                                }
+                                                onMouseLeave={() =>
+                                                    setHoveredRange(undefined)
+                                                }
+                                            />
+                                        )),
+                                    )}
+                            </div>
+                            {hoveredRange && (
+                                <div className="pointer-events-none absolute bottom-2 left-1/2 z-10 -translate-x-1/2 whitespace-pre rounded bg-gray-800 px-2 py-1 text-xs text-white shadow">
+                                    {hoveredRange}
+                                </div>
                             )}
                         </div>
-                        {hoveredRange && (
-                            <div className="pointer-events-none absolute bottom-2 left-1/2 z-10 -translate-x-1/2 whitespace-pre rounded bg-gray-800 px-2 py-1 text-xs text-white shadow">
-                                {hoveredRange}
-                            </div>
-                        )}
+                        <div className="mt-2 text-center font-medium">X →</div>
                     </div>
-                    <div className="mt-2 text-center font-medium">{filter?.catX ?? 'X'}</div>
+                    <div className="relative h-36 w-4 font-medium">
+                        <span
+                            className="absolute left-1/2 top-1/2 whitespace-nowrap"
+                            style={{
+                                transform: 'translate(-50%, -50%)',
+                            }}
+                        >
+                            ↑<br/>Y
+                        </span>
+                    </div>
                 </div>
-                <div className="relative h-36 w-4 font-medium">
-                    <span
-                        className="absolute left-1/2 top-1/2 whitespace-nowrap [writing-mode:vertical-rl]"
-                        style={{ transform: 'translate(-50%, -50%) rotate(180deg)' }}
-                    >
-                        {filter?.catY ?? 'Y'}
-                    </span>
-                </div>
-            </div>}
+            )}
         </div>
     );
 }
@@ -195,7 +197,6 @@ export function MapView({
     viewport,
     layers,
     legend,
-    filters,
     view,
     scale,
     tooltip,
@@ -226,11 +227,13 @@ export function MapView({
                 </div>
             )}
             {'X' in legend
-                ? filters[0]?.catY && (
-                      <BivariateLegend bins={legend} filters={filters} view={view} />
-                  )
+                ? legend.X[view] && <BivariateLegend bins={legend} view={view} />
                 : legend[view] && (
-                      <UnivariateLegend maxValue={legend[view]} view={view} scale={scale} />
+                      <UnivariateLegend
+                          maxValue={legend[view]}
+                          view={view}
+                          scale={scale}
+                      />
                   )}
             {mapAttribution}
         </div>

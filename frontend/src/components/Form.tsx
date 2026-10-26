@@ -192,7 +192,6 @@ export function Form({
                                     ))}
                                 </select>
                             </label>
-                            { index == 0 && (
                                 <label
                                     className="flex flex-col gap-1 text-sm font-medium text-slate-700"
                                     htmlFor={`category${index}`}
@@ -215,7 +214,6 @@ export function Form({
                                         ))}
                                     </select>
                                 </label>
-                            )}
 
                         </div>
                     );

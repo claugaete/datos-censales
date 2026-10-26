@@ -302,7 +302,6 @@ function HomeComponent() {
             filters.forEach((filter) =>
                 urlFilters.append('filter', filterToString(filter)),
             );
-            console.log(filters);
             const promise = fetch(
                 `/api/comuna/${validComunaName}/${dataType}-data/?${urlFilters.toString()}`,
             )

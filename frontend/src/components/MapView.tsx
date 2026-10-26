@@ -184,7 +184,7 @@ function BivariateLegend({ bins, view }: { bins: BivariateBins; view: ViewType }
                                 transform: 'translate(-50%, -50%)',
                             }}
                         >
-                            ↑<br/>Y
+                            ↑<br />Y
                         </span>
                     </div>
                 </div>

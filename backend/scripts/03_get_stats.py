@@ -32,13 +32,13 @@ DOWNLOAD_DATA_PATH.mkdir(exist_ok=True)
 # %% [markdown]
 # A nivel de manzana, tendremos dos fuentes de información para las estadísticas:
 #
-# 1. Los cruces realizados por Vicente, que se encuentran en el directorio
+# 1. Los cruces realizados por Vicente, que se deben encontrar en el directorio
 #    `data/processed/stats/cruces`. De aquí se extraerán los conteos filtrados
 #    según las variables solicitadas en la aplicación.
 # 2. Información del área y población total de cada manzana/entidad, que se
-#    extraerá directamente de la cartografía del Censo. (Nota: una vez se
-#    privaticen los conteos, ¿será necesario también privatizar la población
-#    total obtenida aquí?)
+#    extraerá directamente de la cartografía del Censo. Al ser poca información,
+#    se guardará toda en un único CSV que se mantendrá siempre cargado en el
+#    backend de la aplicación web.
 
 # %%
 manzanas = gpd.read_parquet(
@@ -120,7 +120,15 @@ possible_values["transporte"] = [
 pd.Series(possible_values).to_json(STATS_DATA_PATH / "variables.json")
 
 # %% [markdown]
-# ## (BROKEN) Generación de estadísticas a nivel de celda H3
+# ## Generación de estadísticas a nivel de celda H3
+
+# %% [markdown]
+# **IMPORTANTE**: Aquí solamente estamos creando el CSV con la información
+# general a nivel de celda (población y area); para poder mostrar datos a nivel
+# de celda H3, también habría que realizar el cambio de soporte para cada uno de
+# los conteos provistos por Vicente. Como esto es algo que tomará tiempo,
+# prefiero esperar a que fijemos más claramente la estructura de los datos que
+# utilizaremos antes de comenzar con la tarea.
 
 # %%
 H3_RESOLUTION_COMUNA = 10

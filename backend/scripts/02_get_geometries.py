@@ -9,7 +9,6 @@ import subprocess
 from pathlib import Path
 
 import geopandas as gpd
-import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
@@ -103,19 +102,22 @@ entidades = gpd.read_parquet(
 # %%
 manzent = pd.concat([manzanas, entidades], ignore_index=True).to_crs(4326)
 manzent = manzent.rename_geometry("geometry").set_index("MANZENT")[
-    ["COMUNA", "geometry"]
+    ["COMUNA", "AREA_C", "geometry"]
 ]
 
 # %%
-# simplificar la geometría de cada geodataframe de manera proporcional a su
-# tamaño (así, comunas más pequeñas reciben menos modificaciones)
-fraction = 0.0001
+# simplificar la geometría de cada geodataframe (simplificamos manzanas menos, entidades más)
+MANZANA_TOLERANCE = 1e-5
+ENTIDAD_TOLERANCE = 1e-4
 
 for comuna, group in tqdm(manzent.groupby("COMUNA")):
-    minx, miny, maxx, maxy = group.total_bounds
-    diagonal = np.sqrt((maxx - minx) ** 2 + (maxy - miny) ** 2)
-    tolerance = diagonal * fraction
-    manzent_geom: gpd.GeoSeries = group.geometry.simplify(tolerance=diagonal * fraction)
-    manzent_geom.to_file(
+    manzanas_mask = group["AREA_C"] == "URBANO"
+    group.loc[manzanas_mask, "geometry"] = group.loc[
+        manzanas_mask, "geometry"
+    ].simplify_coverage(tolerance=MANZANA_TOLERANCE, simplify_boundary=True)
+    group.loc[~manzanas_mask, "geometry"] = group.loc[
+        ~manzanas_mask, "geometry"
+    ].simplify_coverage(tolerance=ENTIDAD_TOLERANCE, simplify_boundary=True)
+    group.geometry.to_file(
         PROCESSED_DATA_PATH / "manzent_geom" / f"{comuna}.fgb", driver="FlatGeobuf"
     )

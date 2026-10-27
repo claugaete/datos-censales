@@ -1,12 +1,35 @@
 import { createRouter, RouterProvider } from '@tanstack/react-router';
-import { StrictMode } from 'react';
+import { StrictMode, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Toaster } from 'react-hot-toast';
+import toast, { Toaster, useToasterStore } from 'react-hot-toast';
 
 // Import the generated route tree
 import { routeTree } from './routeTree.gen';
 
 import './index.css';
+
+interface ToasterWithMaxProps extends React.ComponentProps<typeof Toaster> {
+    max: number;
+}
+
+export function ToasterWithMax({ max, ...props }: ToasterWithMaxProps) {
+    const { toasts } = useToasterStore();
+
+    useEffect(() => {
+        // consider only visible toasts
+        const visibleToasts = toasts
+            .filter((t) => t.visible)
+            .sort((a, b) => a.createdAt - b.createdAt);
+        if (visibleToasts.length > max) {
+            const excessCount = visibleToasts.length - max;
+            for (let i = 0; i < excessCount; i++) {
+                toast.dismiss(visibleToasts[i].id);
+            }
+        }
+    }, [toasts, max]);
+
+    return <Toaster {...props} />;
+}
 
 function stringifySearch(search: Record<string, unknown>): string {
     const params = new URLSearchParams();
@@ -41,7 +64,7 @@ if (!rootElement.innerHTML) {
     const root = ReactDOM.createRoot(rootElement);
     root.render(
         <StrictMode>
-            <Toaster/>
+            <ToasterWithMax max={1} />
             <RouterProvider router={router} />
         </StrictMode>,
     );

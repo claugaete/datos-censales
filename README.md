@@ -27,7 +27,7 @@ Para ejecutar los scripts de descarga y preprocesamiento de datos del backend,
 se requiere instalar [`uv`](https://docs.astral.sh/uv/) y ejecutar, en el
 directorio `backend`:
 ```
-uv sync
+uv sync --group datagen
 
 uv run scripts/<nombre del script>.py
 ```

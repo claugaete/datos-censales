@@ -7,16 +7,19 @@ dependencies = [
     "flask-cors>=6.0.5",
     "geopandas>=1.1.4",
     "gunicorn>=26.2.0",
-    "h3>=4.5.0",
     "mapclassify>=2.11.0",
     "pandas>=3.0.5",
     "pyarrow>=25.0.1",
     "requests>=2.34.2",
-    "tobler>=0.14.0",
-    "tqdm>=4.70.1",
 ]
 
 [dependency-groups]
+datagen = [
+    "cudf-cu13==26.10.*",
+    "h3>=4.5.0",
+    "tobler>=0.14.0",
+    "tqdm>=4.70.1",
+]
 dev = [
     "ipykernel>=7.3.0",
     "jupytext>=1.19.5",
@@ -26,3 +29,6 @@ dev = [
 [tool.jupytext]
 formats = "ipynb,py:percent"
 notebook_metadata_filter = "-all"
+
+[[tool.uv.index]]
+url = "https://pypi.nvidia.com/"

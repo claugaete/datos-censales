@@ -122,14 +122,6 @@ pd.Series(possible_values).to_json(STATS_DATA_PATH / "variables.json")
 # %% [markdown]
 # ## Generación de estadísticas a nivel de celda H3
 
-# %% [markdown]
-# **IMPORTANTE**: Aquí solamente estamos creando el CSV con la información
-# general a nivel de celda (población y area); para poder mostrar datos a nivel
-# de celda H3, también habría que realizar el cambio de soporte para cada uno de
-# los conteos provistos por Vicente. Como esto es algo que tomará tiempo,
-# prefiero esperar a que fijemos más claramente la estructura de los datos que
-# utilizaremos antes de comenzar con la tarea.
-
 # %%
 H3_RESOLUTION_COMUNA = 10
 
@@ -145,6 +137,9 @@ limites_urbanos = gpd.read_parquet(
 # *masking*, pero la idea sería realizar una mejor interpolación a futuro, y
 # quizás incluso agregar celdas para zonas rurales (si la cantidad de celdas no
 # es excesiva).
+
+# %% [markdown]
+# ### Área y población por celda
 
 # %%
 all_stats_h3: dict[str, pd.DataFrame] = {}
@@ -179,3 +174,68 @@ all_stats_h3_df.to_csv(STATS_DATA_PATH / "h3_comuna.csv")
 
 # %%
 all_stats_h3_df.sample(10)
+
+# %% [markdown]
+# ### Cruces por celda
+
+# %% [markdown]
+# Esta sección requiere el uso de GPU. Demoró unos 35 minutos con mi GPU (RTX
+# 3060 Mobile).
+
+# %%
+import numba_cuda  # noqa: F401, I001
+import cudf
+import cupyx.scipy.sparse as cpx_sparse
+import numpy as np
+from scipy.sparse import csr_array
+from tobler.area_weighted.area_interpolate import _area_tables_binning
+
+# %%
+cuts = limites_urbanos["CUT"].unique()
+
+# %%
+for cut in tqdm(cuts):
+    # obtenemos datos a nivel de manzent (n_vars filas x n_manzent columnas)
+    try:
+        conteo_df: cudf.DataFrame = cudf.read_parquet(
+            STATS_DATA_PATH / "cruces" / f"cruces_{cut}.parquet",
+        )
+    except FileNotFoundError:
+        continue
+    conteo_pivot = conteo_df.pivot(
+        index=["var1", "cat1", "var2", "cat2"], columns="MANZENT", values="conteo"
+    )
+    conteo_vals = conteo_pivot.to_cupy(na_value=0)
+
+    # obtenemos matriz de pesos (n_manzent filas x n_h3 columnas)
+    manzent_geoms = (
+        manzent.loc[manzent["CUT"] == cut, ["geometry"]]
+        .to_crs(5361)
+        .reindex(conteo_pivot.columns)
+    )
+    h3_geoms: gpd.GeoDataFrame = h3fy(
+        limites_urbanos[limites_urbanos["CUT"] == cut],
+        resolution=H3_RESOLUTION_COMUNA,
+    ).to_crs(5361)
+    weights: csr_array = _area_tables_binning(manzent_geoms, h3_geoms, "auto")
+    # normalizamos pesos (cada manzana se divide por su área total)
+    areas = np.repeat(manzent_geoms.area.values, np.diff(weights.indptr))
+    np.divide(weights.data, areas, out=weights.data, where=areas != 0)
+    weights_gpu = cpx_sparse.csr_matrix(weights)
+
+    # multiplicamos para obtener datos a nivel de celda
+    # (n_vars filas x n_h3 columnas)
+    conteo_h3 = cudf.DataFrame(
+        conteo_vals @ weights_gpu, index=conteo_pivot.index, columns=h3_geoms.index
+    )
+
+    # volvemos a la forma original del dataframe y guardamos
+    df_melted = conteo_h3.reset_index().melt(
+        id_vars=["var1", "cat1", "var2", "cat2"],
+        value_vars=conteo_h3.columns[4:],
+        var_name="hex_id",
+        value_name="conteo",
+    )[["h3_index", "var1", "cat1", "var2", "cat2", "conteo"]]
+    df_melted.to_pandas().to_parquet(
+        STATS_DATA_PATH / "cruces_h3" / f"cruces_{cut}.parquet"
+    )

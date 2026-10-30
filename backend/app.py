@@ -3,7 +3,7 @@ import logging
 import math
 import sqlite3
 from pathlib import Path
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 import pandas as pd
 from flask import Flask, abort, jsonify, make_response, request, send_from_directory
@@ -26,7 +26,7 @@ class Filter(TypedDict):
 PROCESSED_DATA_PATH = Path(__file__).resolve().parent / "data" / "processed"
 MANZENT_GEOM_PATH = PROCESSED_DATA_PATH / "manzent_geom"
 MBTILES_PATH = PROCESSED_DATA_PATH / "comunas.mbtiles"
-CRUCES_PATH = PROCESSED_DATA_PATH / "stats" / "cruces"
+STATS_PATH = PROCESSED_DATA_PATH / "stats"
 
 comunas_bbox = pd.read_json(PROCESSED_DATA_PATH / "comunas_bbox.json", orient="index")
 comunas_cut = pd.read_json(
@@ -128,14 +128,14 @@ def getComunaManzentGeom(comuna: str):
     return send_from_directory(MANZENT_GEOM_PATH, f"{comuna}.fgb")
 
 
-def getComunaCounts(
+def getComunaData(
     comuna: str,
-    general_data_comuna: pd.DataFrame,
+    dataType: Literal["manzent", "h3"],
     var1: str,
     cat1: str,
     var2: str,
     cat2: str,
-):
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Obtiene los siguientes datos para cada "celda" de una comuna dada:
 
@@ -145,6 +145,16 @@ def getComunaCounts(
     - El porcentaje de la población total que representan las personas que
       cumplen la condición.
     """
+
+    if dataType == "manzent":
+        general_data_comuna = stats_manzent_grouped.get(comuna)
+        file_path = Path("cruces") / f"cruces_{comunas_cut.loc[comuna]}.parquet"
+    else:
+        general_data_comuna = stats_h3_grouped.get(comuna)
+        file_path = Path("cruces_h3") / f"cruces_{comunas_cut.loc[comuna]}.parquet"
+
+    if general_data_comuna is None:
+        abort(404, "NoComuna")
 
     # damos vuelta variables si es necesario (abortamos si una de las
     # variables no existe)
@@ -159,7 +169,7 @@ def getComunaCounts(
     try:
         count_data = (
             pd.read_parquet(
-                CRUCES_PATH / f"cruces_{comunas_cut.loc[comuna]}.parquet",
+                STATS_PATH / file_path,
                 filters=[
                     ("var1", "==", var1),
                     ("cat1", "==", cat1),
@@ -167,7 +177,7 @@ def getComunaCounts(
                     ("cat2", "==", cat2),
                 ],
             )
-            .set_index("MANZENT")[["conteo"]]
+            .set_index("MANZENT" if dataType == "manzent" else "hex_id")[["conteo"]]
             # solo manzanas válidas en la comuna
             .reindex(general_data_comuna.index)
             .fillna(0)
@@ -181,11 +191,11 @@ def getComunaCounts(
     count_data["densidad"] = count_data["conteo"] / general_data_comuna["area"]
     count_data["porcentaje"] = count_data["conteo"] / general_data_comuna["poblacion"]
 
-    return count_data
+    return general_data_comuna, count_data
 
 
 def getUnivariateComunaData(
-    comuna: str, comuna_data_dict: dict[str, pd.DataFrame], filters: list[Filter]
+    comuna: str, dataType: Literal["manzent", "h3"], filters: list[Filter]
 ):
     """
     Obtiene los siguientes datos para cada "celda" de una comuna dada:
@@ -200,14 +210,9 @@ def getUnivariateComunaData(
     Además, retorna el valor máximo para estas últimas tres variables.
     """
 
-    # obtenemos data general de cada manzent
-    general_data = comuna_data_dict.get(comuna)
-    if general_data is None:
-        abort(404, "NoComuna")
-
-    count_data = getComunaCounts(
+    general_data, count_data = getComunaData(
         comuna,
-        general_data,
+        dataType,
         filters[0].get("var"),
         filters[0].get("catX"),
         filters[1].get("var"),
@@ -231,7 +236,7 @@ def getUnivariateComunaData(
 
 def getBivariateComunaData(
     comuna: str,
-    comuna_data_dict: dict[str, pd.DataFrame],
+    dataType: Literal["manzent", "h3"],
     filters: list[dict[str, str]],
 ):
     """
@@ -251,23 +256,18 @@ def getBivariateComunaData(
     entregando los límites entre bins.
     """
 
-    # obtenemos data general de cada manzent
-    general_data = comuna_data_dict.get(comuna)
-    if general_data is None:
-        abort(404, "NoComuna")
-
-    count_data_X = getComunaCounts(
+    general_data, count_data_X = getComunaData(
         comuna,
-        general_data,
+        dataType,
         filters[0].get("var"),
         filters[0].get("catX"),
         filters[1].get("var"),
         filters[1].get("catX"),
     )
 
-    count_data_Y = getComunaCounts(
+    _, count_data_Y = getComunaData(
         comuna,
-        general_data,
+        dataType,
         filters[0].get("var"),
         filters[0].get("catY") or filters[0].get("catX"),
         filters[1].get("var"),
@@ -328,8 +328,8 @@ def getComunaManzentData(comuna: str):
 
     filters = getFiltersFromRequest()
     if any(f["catY"] is not None for f in filters):
-        return getBivariateComunaData(comuna, stats_manzent_grouped, filters)
-    return getUnivariateComunaData(comuna, stats_manzent_grouped, filters)
+        return getBivariateComunaData(comuna, "manzent", filters)
+    return getUnivariateComunaData(comuna, "manzent", filters)
 
 
 @app.route("/api/comuna/<comuna>/h3-data")
@@ -339,7 +339,10 @@ def getComunaH3Data(comuna: str):
     (solo considerando su área urbana).
     """
 
-    abort(404, "NotImplemented")
+    filters = getFiltersFromRequest()
+    if any(f["catY"] is not None for f in filters):
+        return getBivariateComunaData(comuna, "h3", filters)
+    return getUnivariateComunaData(comuna, "h3", filters)
 
 
 if __name__ == "__main__":

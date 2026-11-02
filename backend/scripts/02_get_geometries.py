@@ -10,6 +10,7 @@ from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
+from shapely import unary_union
 from tqdm import tqdm
 
 try:
@@ -21,11 +22,36 @@ INTERIM_DATA_PATH = DATA_PATH / "interim"
 PROCESSED_DATA_PATH = DATA_PATH / "processed"
 
 # %% [markdown]
-# ## Generación de JSONs intermedios para comunas
+# ## Generación de JSONs intermedios para comunas y conurbaciones
+
+# %%
+region_order = [
+    "ARICA Y PARINACOTA",
+    "TARAPACÁ",
+    "ANTOFAGASTA",
+    "ATACAMA",
+    "COQUIMBO",
+    "VALPARAÍSO",
+    "METROPOLITANA DE SANTIAGO",
+    "LIBERTADOR GENERAL BERNARDO O'HIGGINS",
+    "MAULE",
+    "ÑUBLE",
+    "BIOBÍO",
+    "LA ARAUCANÍA",
+    "LOS RÍOS",
+    "LOS LAGOS",
+    "AYSÉN DEL GENERAL CARLOS IBÁÑEZ DEL CAMPO",
+    "MAGALLANES Y DE LA ANTÁRTICA CHILENA",
+]
 
 # %%
 comunas = gpd.read_parquet(
     INTERIM_DATA_PATH / "censo" / "Cartografia_censo2024_Pais_Comunal.parquet"
+)
+
+# %%
+limites_urbanos = gpd.read_parquet(
+    INTERIM_DATA_PATH / "censo" / "Cartografia_censo2024_Pais_Limite_Urbano.parquet"
 )
 
 # %%
@@ -38,24 +64,7 @@ comunas.set_index("COMUNA")["CUT"].to_json(
 # creamos un JSON asociando cada región con sus comunas, para poder
 # seleccionar entre las distintas comunas en el frontend a partir de la región
 comunas.sort_values("COMUNA").groupby("REGION")["COMUNA"].apply(list).reindex(
-    [
-        "ARICA Y PARINACOTA",
-        "TARAPACÁ",
-        "ANTOFAGASTA",
-        "ATACAMA",
-        "COQUIMBO",
-        "VALPARAÍSO",
-        "METROPOLITANA DE SANTIAGO",
-        "LIBERTADOR GENERAL BERNARDO O'HIGGINS",
-        "MAULE",
-        "ÑUBLE",
-        "BIOBÍO",
-        "LA ARAUCANÍA",
-        "LOS RÍOS",
-        "LOS LAGOS",
-        "AYSÉN DEL GENERAL CARLOS IBÁÑEZ DEL CAMPO",
-        "MAGALLANES Y DE LA ANTÁRTICA CHILENA",
-    ]
+    region_order
 ).to_json(PROCESSED_DATA_PATH / "comunas.json")
 
 # %%
@@ -67,7 +76,24 @@ comunas.set_index("COMUNA").bounds.to_json(
 )
 
 # %%
-comunas_bbox = pd.read_json(PROCESSED_DATA_PATH / "comunas_bbox.json", orient="index")
+# recreamos los dos jsons anteriores para conurbaciones
+limites_urbanos.sort_values("CONURBACION").drop_duplicates(subset="CONURBACION").dropna(
+    subset="CONURBACION"
+).groupby("REGION")["CONURBACION"].apply(list).reindex(
+    region_order, fill_value=[]
+).to_json(PROCESSED_DATA_PATH / "conurbaciones.json")
+
+# %%
+gpd.GeoSeries(
+    limites_urbanos.groupby("CONURBACION")["SHAPE"].aggregate(unary_union), crs=4326
+).bounds.to_json(PROCESSED_DATA_PATH / "conurbaciones_bbox.json", orient="index")
+
+# %%
+# asociamos cada conurbación con las comunas que están involucradas (para no
+# mostrarlas en la visualización si se está visualizando la conurbación)
+limites_urbanos.sort_values("CONURBACION").groupby("CONURBACION")["COMUNA"].apply(
+    list
+).to_json(PROCESSED_DATA_PATH / "conurbaciones_comunas.json")
 
 # %% [markdown]
 # ## Generación de MBTiles para comunas

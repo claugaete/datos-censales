@@ -1,7 +1,7 @@
-const DATA_TYPES = ['manzent', 'h3'] as const;
+const DATA_TYPES = ['manzent', 'h3_comuna', 'h3_conurbacion'] as const;
 
 /**
- * Tipo de dato que se puede solicitar a nivel de comuna.
+ * Tipo de dato que se puede solicitar a nivel de comuna/conurbación.
  */
 export type DataType = (typeof DATA_TYPES)[number];
 export function isDataType(value: unknown): value is DataType {

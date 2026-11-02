@@ -32,8 +32,14 @@ comunas_bbox = pd.read_json(PROCESSED_DATA_PATH / "comunas_bbox.json", orient="i
 comunas_cut = pd.read_json(
     PROCESSED_DATA_PATH / "comunas_cut.json", orient="index"
 ).squeeze()
+conurbaciones_bbox = pd.read_json(
+    PROCESSED_DATA_PATH / "conurbaciones_bbox.json", orient="index"
+)
+
 stats_manzent = pd.read_csv(PROCESSED_DATA_PATH / "stats" / "manzent.csv")
 stats_h3 = pd.read_csv(PROCESSED_DATA_PATH / "stats" / "h3_comuna.csv")
+stats_conurbaciones = pd.read_csv(PROCESSED_DATA_PATH / "stats" / "h3_conurbacion.csv")
+
 cruces_variables = pd.read_json(
     PROCESSED_DATA_PATH / "stats" / "variables.json", orient="index"
 ).index.to_list()
@@ -45,6 +51,10 @@ stats_manzent_grouped = {
 stats_h3_grouped = {
     comuna: group.set_index("hex_id", drop=False).drop(columns="COMUNA")
     for comuna, group in stats_h3.groupby("COMUNA")
+}
+stats_conurbacion_grouped = {
+    conurbacion: group.set_index("hex_id", drop=False).drop(columns="CONURBACION")
+    for conurbacion, group in stats_conurbaciones.groupby("CONURBACION")
 }
 
 
@@ -100,6 +110,18 @@ def getComunaList():
     return send_from_directory(PROCESSED_DATA_PATH, "comunas.json")
 
 
+@app.route("/api/list/conurbaciones")
+def getConurbacionList():
+    """Retorna una lista que asocia a cada región con sus conurbaciones."""
+    return send_from_directory(PROCESSED_DATA_PATH, "conurbaciones.json")
+
+
+@app.route("/api/list/conurbaciones-comunas")
+def getConurbacionComunaList():
+    """Retorna una lista que asocia a cada conurbación con sus comunas."""
+    return send_from_directory(PROCESSED_DATA_PATH, "conurbaciones_comunas.json")
+
+
 @app.route("/api/list/variables")
 def getVariableList():
     """Retorna una lista que asocia cada variable (de los cruces realizados)
@@ -120,6 +142,19 @@ def getComunaBbox(comuna: str):
         abort(404)
 
 
+@app.route("/api/conurbacion/<conurbacion>/bbox/")
+def getConurbacionBbox(conurbacion: str):
+    """
+    Retorna la bounding box de la conurbación solicitada, como un JSON con 4
+    variables (`minx`, `miny`, `maxx`, `maxy`).
+    """
+
+    try:
+        return conurbaciones_bbox.loc[conurbacion].to_dict()
+    except KeyError:
+        abort(404)
+
+
 @app.route("/api/comuna/<comuna>/manzent-geom")
 def getComunaManzentGeom(comuna: str):
     """
@@ -128,16 +163,17 @@ def getComunaManzentGeom(comuna: str):
     return send_from_directory(MANZENT_GEOM_PATH, f"{comuna}.fgb")
 
 
-def getComunaData(
-    comuna: str,
-    dataType: Literal["manzent", "h3"],
+def getPlaceData(
+    place: str,
+    dataType: Literal["manzent", "h3_comuna", "h3_conurbacion"],
     var1: str,
     cat1: str,
     var2: str,
     cat2: str,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Obtiene los siguientes datos para cada "celda" de una comuna dada:
+    Obtiene los siguientes datos para cada "celda" de una comuna/conurbación
+    dada:
 
     - El conteo de personas para las cuales `var1` toma el valor `cat1` y
       `var2` toma el valor `cat2`.
@@ -147,13 +183,16 @@ def getComunaData(
     """
 
     if dataType == "manzent":
-        general_data_comuna = stats_manzent_grouped.get(comuna)
-        file_path = Path("cruces") / f"cruces_{comunas_cut.loc[comuna]}.parquet"
+        general_data = stats_manzent_grouped.get(place)
+        file_path = Path("cruces") / f"cruces_{comunas_cut.loc[place]}.parquet"
+    elif dataType == "h3_comuna":
+        general_data = stats_h3_grouped.get(place)
+        file_path = Path("cruces_h3") / f"cruces_{comunas_cut.loc[place]}.parquet"
     else:
-        general_data_comuna = stats_h3_grouped.get(comuna)
-        file_path = Path("cruces_h3") / f"cruces_{comunas_cut.loc[comuna]}.parquet"
+        general_data = stats_conurbacion_grouped.get(place)
+        file_path = Path("cruces_conurbacion") / f"cruces_{place}.parquet"
 
-    if general_data_comuna is None:
+    if general_data is None:
         abort(404, "NoComuna")
 
     # damos vuelta variables si es necesario (abortamos si una de las
@@ -179,7 +218,7 @@ def getComunaData(
             )
             .set_index("MANZENT" if dataType == "manzent" else "hex_id")[["conteo"]]
             # solo manzanas válidas en la comuna
-            .reindex(general_data_comuna.index)
+            .reindex(general_data.index)
             .fillna(0)
             .astype(float)
         )
@@ -188,17 +227,18 @@ def getComunaData(
     if len(count_data) == 0:
         abort(404, "NoCat")
 
-    count_data["densidad"] = count_data["conteo"] / general_data_comuna["area"]
-    count_data["porcentaje"] = count_data["conteo"] / general_data_comuna["poblacion"]
+    count_data["densidad"] = count_data["conteo"] / general_data["area"]
+    count_data["porcentaje"] = count_data["conteo"] / general_data["poblacion"]
 
-    return general_data_comuna, count_data
+    return general_data, count_data
 
 
-def getUnivariateComunaData(
-    comuna: str, dataType: Literal["manzent", "h3"], filters: list[Filter]
+def getUnivariatePlaceData(
+    place: str, dataType: Literal["manzent", "h3"], filters: list[Filter]
 ):
     """
-    Obtiene los siguientes datos para cada "celda" de una comuna dada:
+    Obtiene los siguientes datos para cada "celda" de una comuna/conurbación
+    dada:
 
     - La población total y superficie de la "celda".
     - El conteo de personas que cumplen todos los filtros de `filters` (el
@@ -210,8 +250,8 @@ def getUnivariateComunaData(
     Además, retorna el valor máximo para estas últimas tres variables.
     """
 
-    general_data, count_data = getComunaData(
-        comuna,
+    general_data, count_data = getPlaceData(
+        place,
         dataType,
         filters[0].get("var"),
         filters[0].get("catX"),
@@ -234,13 +274,14 @@ def getUnivariateComunaData(
     return jsonify(payload)
 
 
-def getBivariateComunaData(
-    comuna: str,
+def getBivariatePlaceData(
+    place: str,
     dataType: Literal["manzent", "h3"],
     filters: list[dict[str, str]],
 ):
     """
-    Obtiene los siguientes datos para cada "celda" de una comuna dada:
+    Obtiene los siguientes datos para cada "celda" de una comuna/conurbación
+    dada:
 
     - La población total y superficie de la "celda".
     - Los siguientes conteos de personas:
@@ -256,8 +297,8 @@ def getBivariateComunaData(
     entregando los límites entre bins.
     """
 
-    general_data, count_data_X = getComunaData(
-        comuna,
+    general_data, count_data_X = getPlaceData(
+        place,
         dataType,
         filters[0].get("var"),
         filters[0].get("catX"),
@@ -265,8 +306,8 @@ def getBivariateComunaData(
         filters[1].get("catX"),
     )
 
-    _, count_data_Y = getComunaData(
-        comuna,
+    _, count_data_Y = getPlaceData(
+        place,
         dataType,
         filters[0].get("var"),
         filters[0].get("catY") or filters[0].get("catX"),
@@ -322,27 +363,40 @@ def getFiltersFromRequest() -> list[Filter]:
 @app.route("/api/comuna/<comuna>/manzent-data/")
 def getComunaManzentData(comuna: str):
     """
-    Obtiene los datos de `getComunaData` para cada manzana/entidad de una
+    Obtiene los datos de `getPlaceData` para cada manzana/entidad de una
     comuna.
     """
 
     filters = getFiltersFromRequest()
     if any(f["catY"] is not None for f in filters):
-        return getBivariateComunaData(comuna, "manzent", filters)
-    return getUnivariateComunaData(comuna, "manzent", filters)
+        return getBivariatePlaceData(comuna, "manzent", filters)
+    return getUnivariatePlaceData(comuna, "manzent", filters)
 
 
 @app.route("/api/comuna/<comuna>/h3-data")
 def getComunaH3Data(comuna: str):
     """
-    Obtiene los datos de `getComunaData` para cada celda de H3 de una comuna
+    Obtiene los datos de `getPlaceData` para cada celda de H3 de una comuna
     (solo considerando su área urbana).
     """
 
     filters = getFiltersFromRequest()
     if any(f["catY"] is not None for f in filters):
-        return getBivariateComunaData(comuna, "h3", filters)
-    return getUnivariateComunaData(comuna, "h3", filters)
+        return getBivariatePlaceData(comuna, "h3_comuna", filters)
+    return getUnivariatePlaceData(comuna, "h3_comuna", filters)
+
+
+@app.route("/api/conurbacion/<conurbacion>/h3-data")
+def getConurbacionH3Data(conurbacion: str):
+    """
+    Obtiene los datos de `getPlaceData` para cada celda de H3 de una
+    conurbación.
+    """
+
+    filters = getFiltersFromRequest()
+    if any(f["catY"] is not None for f in filters):
+        return getBivariatePlaceData(conurbacion, "h3_conurbacion", filters)
+    return getUnivariatePlaceData(conurbacion, "h3_conurbacion", filters)
 
 
 if __name__ == "__main__":

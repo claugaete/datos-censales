@@ -21,8 +21,12 @@ datagen = [
     "tqdm>=4.70.1",
 ]
 dev = [
+    "folium>=0.20.0",
     "ipykernel>=7.3.0",
+    "ipywidgets>=8.1.9",
     "jupytext>=1.19.5",
+    "mapclassify>=2.11.0",
+    "matplotlib>=3.11.2",
     "ruff>=0.16.5",
 ]
 

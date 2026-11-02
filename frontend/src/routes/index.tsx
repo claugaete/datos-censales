@@ -41,15 +41,15 @@ setWorkerUrl(workerUrl);
  */
 type DataSearch = {
     dataType?: DataType;
-    comunaName?: string;
+    placeName?: string;
     view?: ViewType;
     filter: string[];
 };
 
 /**
- * Asocia a cada región con sus comunas.
+ * Asocia a cada región con sus comunas/conurbaciones.
  */
-type ComunasByRegion = Record<string, string[]>;
+type PlacesByRegion = Record<string, string[]>;
 
 /**
  * Asocia a cada variable con sus categorías (valores posibles).
@@ -90,7 +90,7 @@ type DataRecord = {
     };
 };
 /**
- * Arreglo de datos, conteniendo la información de una comuna.
+ * Arreglo de datos, conteniendo la información de una comuna/conurbación.
  */
 type DataRecordsArray = DataRecord[];
 
@@ -101,7 +101,7 @@ type DataRecordsArray = DataRecord[];
 type DataRecordsById = Record<string, DataRecord>;
 
 /**
- * Información recibida al solicitar los datos de una comuna. Contiene el
+ * Información recibida al solicitar los datos de un lugar. Contiene el
  * arreglo correspondiente, junto con los valores asociados a la leyenda para
  * cada una de las tres columnas a visualizar.
  */
@@ -111,19 +111,19 @@ type DataRecordsWithLegend = {
 };
 
 /**
- * Revisa si el nombre de una comuna es válido (pertenece a alguna región).
+ * Revisa si el nombre de una comuna/conurbación es válido (pertenece a alguna región).
  *
- * @param comunaName Nombre de la comuna.
- * @param comunasByRegion Mapeo de cada región a sus comunas.
- * @returns Si la comuna es válida o no.
+ * @param placeName Nombre de la comuna.
+ * @param placesByRegion Mapeo de cada región a sus lugares válidos.
+ * @returns Si el nombre es válido o no.
  */
-function isValidComuna(
-    comunaName: unknown,
-    comunasByRegion: ComunasByRegion,
-): comunaName is string {
+function isValidPlace(
+    placeName: unknown,
+    placesByRegion: PlacesByRegion,
+): placeName is string {
     return (
-        typeof comunaName === 'string' &&
-        Object.values(comunasByRegion).some((comunas) => comunas.includes(comunaName))
+        typeof placeName === 'string' &&
+        Object.values(placesByRegion).some((places) => places.includes(placeName))
     );
 }
 
@@ -183,7 +183,7 @@ export const Route = createFileRoute('/')({
     validateSearch: (search: Record<string, unknown>): DataSearch => {
         return {
             dataType: isDataType(search.dataType) ? search.dataType : undefined,
-            comunaName: (search.comunaName as string) || undefined,
+            placeName: (search.placeName as string) || undefined,
             view: isView(search.view) ? search.view : undefined,
             filter: Array.isArray(search.filter)
                 ? search.filter
@@ -197,7 +197,7 @@ export const Route = createFileRoute('/')({
 function HomeComponent() {
     const {
         dataType: dataTypeParam,
-        comunaName,
+        placeName,
         view: viewParam,
         filter: filterParam,
     } = useSearch({ from: '/' });
@@ -212,7 +212,15 @@ function HomeComponent() {
     const navigate = useNavigate();
 
     const [variablesList, setVariablesList] = useState<VariablesList>({});
-    const [comunasByRegion, setComunasByRegion] = useState<ComunasByRegion>({});
+    const [comunasByConurbacion, setComunasByConurbacion] = useState<
+        Record<string, string[]>
+    >({});
+    const [comunasByRegion, setComunasByRegion] = useState<PlacesByRegion>({});
+    const [conurbacionesByRegion, setConurbacionesByRegion] = useState<PlacesByRegion>(
+        {},
+    );
+    const placesByRegion =
+        dataType === 'h3_conurbacion' ? conurbacionesByRegion : comunasByRegion;
     const [dataRecordsArray, setDataRecordsArray] = useState<DataRecordsArray>([]);
     const [dataRecordsById, setDataRecordsById] = useState<DataRecordsById>({});
     const [dataAvailable, setDataAvailable] = useState(false);
@@ -223,7 +231,7 @@ function HomeComponent() {
 
     // campos del formulario
     const [selectedRegion, setSelectedRegion] = useState('');
-    const [selectedComuna, setSelectedComuna] = useState<string>(comunaName ?? '');
+    const [selectedPlace, setSelectedPlace] = useState<string>(placeName ?? '');
     const [selectedDataType, setSelectedDataType] = useState(dataType);
     const [selectedView, setSelectedView] = useState(view);
     const [selectedFilters, setSelectedFilters] = useState<Filter[]>(() =>
@@ -244,18 +252,25 @@ function HomeComponent() {
         { x: number; y: number; text: string } | undefined
     >();
 
-    // referencia a la comuna actual (sirve para determinar un stale request
-    // cuando uno clickea una comuna mientras todavía se está generando el
-    // request de una comuna anterior)
-    const comunaNameRef = useRef(comunaName);
-    comunaNameRef.current = comunaName;
+    // referencia a la comuna/conurbación actual (sirve para determinar un
+    // stale request cuando uno clickea una comuna mientras todavía se está
+    // generando el request de una comuna anterior)
+    const placeNameRef = useRef(placeName);
+    placeNameRef.current = placeName;
 
-    // reemplaza el nombre de la comuna por undefined si en verdad no existe
-    const validComunaName = useMemo(() => {
-        if (Object.keys(comunasByRegion).length === 0) return undefined;
+    // reemplaza el nombre del lugar por undefined si en verdad no existe
+    const validPlaceName = useMemo(() => {
+        if (Object.keys(placesByRegion).length === 0) return undefined;
 
-        return isValidComuna(comunaName, comunasByRegion) ? comunaName : undefined;
-    }, [comunaName, comunasByRegion]);
+        return isValidPlace(placeName, placesByRegion) ? placeName : undefined;
+    }, [placeName, placesByRegion]);
+
+    // define las comunas actualmente utilizadas (para no mostrar sus
+    // outlines)
+    const usedComunas = useMemo(() => {
+        if (dataType !== 'h3_conurbacion') return [placeName];
+        return comunasByConurbacion[placeName ?? ''] ?? [];
+    }, [placeName, comunasByConurbacion]);
 
     // obtenemos los mapeos
     useEffect(() => {
@@ -263,19 +278,28 @@ function HomeComponent() {
             .then((response) => response.json())
             .then((data: VariablesList) => setVariablesList(data));
     }, []);
-
+    useEffect(() => {
+        fetch('/api/list/conurbaciones-comunas/')
+            .then((response) => response.json())
+            .then((data: Record<string, string[]>) => setComunasByConurbacion(data));
+    }, []);
     useEffect(() => {
         fetch('/api/list/comunas/')
             .then((response) => response.json())
-            .then((data: ComunasByRegion) => setComunasByRegion(data));
+            .then((data: PlacesByRegion) => setComunasByRegion(data));
+    }, []);
+    useEffect(() => {
+        fetch('/api/list/conurbaciones/')
+            .then((response) => response.json())
+            .then((data: PlacesByRegion) => setConurbacionesByRegion(data));
     }, []);
 
     // effect que realiza la carga de datos al clickear una comuna o cambiar
     // filtros
     useEffect(() => {
-        // si la comuna no es válida, no cargamos datos
-        if (!validComunaName) {
-            setSelectedComuna('');
+        // si el lugar no es válido, no cargamos datos
+        if (!validPlaceName) {
+            setSelectedPlace('');
             setSelectedRegion('');
             setDataRecordsArray([]);
             setDataRecordsById({});
@@ -284,11 +308,11 @@ function HomeComponent() {
         }
 
         // actualizamos los campos del form
-        setSelectedComuna(validComunaName);
+        setSelectedPlace(validPlaceName);
         setSelectedDataType(dataType);
         setSelectedView(view);
-        const matchingRegion = Object.entries(comunasByRegion).find(([, comunas]) =>
-            comunas.includes(validComunaName),
+        const matchingRegion = Object.entries(placesByRegion).find(([, places]) =>
+            places.includes(validPlaceName),
         );
         setSelectedRegion(matchingRegion?.[0] ?? '');
 
@@ -298,13 +322,16 @@ function HomeComponent() {
         // obtenemos los datos solicitados (solamente si se tienen todos los
         // filtros necesarios)
         if (Object.values(filters).every((value) => value)) {
+            const baseUrl =
+                `/api/` +
+                `${dataType === 'h3_conurbacion' ? 'conurbacion' : 'comuna'}/` +
+                `${validPlaceName}/` +
+                `${dataType === 'manzent' ? 'manzent' : 'h3'}-data/`;
             const urlFilters = new URLSearchParams();
             filters.forEach((filter) =>
                 urlFilters.append('filter', filterToString(filter)),
             );
-            const promise = fetch(
-                `/api/comuna/${validComunaName}/${dataType}-data/?${urlFilters.toString()}`,
-            )
+            const promise = fetch(`${baseUrl}?${urlFilters.toString()}`)
                 .then(async (response) => {
                     // si la response falla, no generamos datos
                     if (!response.ok) {
@@ -315,7 +342,7 @@ function HomeComponent() {
                 })
                 .then((dataWithLegend: DataRecordsWithLegend) => {
                     // si la request es stale, retornamos
-                    if (!dataWithLegend || comunaNameRef.current !== comunaName) {
+                    if (!dataWithLegend || placeNameRef.current !== placeName) {
                         return;
                     }
                     const { legend, data } = dataWithLegend;
@@ -331,7 +358,7 @@ function HomeComponent() {
                     if (message === 'NoVarCat') {
                         toast.error('Alguna de las variables seleccionadas no existe');
                     } else if (message === 'NoData') {
-                        toast.error('No se encontraron datos para la comuna');
+                        toast.error('No se encontraron datos para el lugar');
                     } else if (message === 'NoCat') {
                         toast.error('Los filtros utilizados son excluyentes');
                     } else if (message === 'InvalidFilterLength') {
@@ -353,7 +380,7 @@ function HomeComponent() {
                 loading: 'Cargando datos...',
             });
         }
-    }, [validComunaName, dataType, filters]);
+    }, [validPlaceName, dataType, filters, placesByRegion]);
 
     /**
      * Realiza un zoom a la bounding box solicitada.
@@ -362,7 +389,7 @@ function HomeComponent() {
      * @param transitionDuration Duración de la transición (por defecto, 1.5
      * segundos).
      */
-    function zoomToComuna(bbox: Bbox, transitionDuration: number = 1500) {
+    function zoomToBbox(bbox: Bbox, transitionDuration: number = 1500) {
         const viewportWebMercator = new WebMercatorViewport({
             ...viewport,
             width: window.innerWidth,
@@ -386,30 +413,32 @@ function HomeComponent() {
     // hacemos zoom a la comuna solicitada, solo si esta cambia (si cambian
     // los filtros o la vista, dejamos el viewport igual)
     useEffect(() => {
-        if (!validComunaName) return;
+        if (!validPlaceName) return;
 
-        fetch(`/api/comuna/${validComunaName}/bbox/`)
+        fetch(
+            `/api/${dataType === 'h3_conurbacion' ? 'conurbacion' : 'comuna'}/${validPlaceName}/bbox/`,
+        )
             .then((response) => response.json())
             .then((bbox: Bbox) => {
-                if (comunaNameRef.current !== comunaName) return;
-                zoomToComuna(bbox);
+                if (placeNameRef.current !== placeName) return;
+                zoomToBbox(bbox);
             });
-    }, [validComunaName]);
+    }, [validPlaceName]);
 
-    // si el nombre de la comuna no es válido, redirigimos a la página sin
-    // ninguna comuna seleccionada
+    // si el nombre del lugar no es válido, redirigimos a la página sin
+    // ningún lugar seleccionado
     useEffect(() => {
-        if (Object.keys(comunasByRegion).length === 0) return;
+        if (Object.keys(placesByRegion).length === 0) return;
 
-        if (!validComunaName) {
-            if (comunaName) {
-                toast.error('Selecciona una comuna válida.');
+        if (!validPlaceName) {
+            if (placeName) {
+                toast.error('Selecciona un lugar válido.');
             }
             navigate({
                 to: '/',
                 replace: true,
                 search: {
-                    comunaName: undefined,
+                    placeName: undefined,
                     dataType,
                     view,
                     filter: selectedFilters
@@ -418,19 +447,19 @@ function HomeComponent() {
                 },
             });
         }
-    }, [validComunaName, comunasByRegion, navigate]);
+    }, [validPlaceName, placesByRegion, navigate]);
 
     /**
      * Navega a la página con los parámetros solicitados, reemplazando
      * `dataType` y `view` con valores por defecto si los valores recibidos no
      * son válidos.
      */
-    const handleSubmit = ({ comunaName, dataType, view, filter }: DataSearch) => {
+    const handleSubmit = ({ placeName, dataType, view, filter }: DataSearch) => {
         navigate({
             to: '/',
             replace: true,
             search: {
-                comunaName,
+                placeName,
                 dataType: isDataType(dataType) ? dataType : 'manzent',
                 view: isView(view) ? view : 'conteo',
                 filter,
@@ -444,13 +473,13 @@ function HomeComponent() {
     const handleFormSubmit = (event: React.SubmitEvent<HTMLFormElement>) => {
         event.preventDefault();
         if (
-            selectedComuna &&
+            selectedPlace &&
             Object.values(selectedFilters).every(
                 (filter) => filter.variable !== '' && filter.catX !== '',
             )
         ) {
             handleSubmit({
-                comunaName: selectedComuna,
+                placeName: selectedPlace,
                 dataType: selectedDataType,
                 view: selectedView,
                 filter: selectedFilters.map(filterToString),
@@ -464,16 +493,16 @@ function HomeComponent() {
         ({ object }: PickingInfo) => {
             if (object) {
                 const newComuna = object.properties.COMUNA;
-                if (comunaName === newComuna) return;
+                if (placeName === newComuna) return;
                 handleSubmit({
-                    comunaName: newComuna,
-                    dataType: dataType,
+                    placeName: newComuna,
+                    dataType: dataType === 'h3_conurbacion' ? 'h3_comuna' : dataType,
                     view: view,
                     filter: filters.map(filterToString),
                 });
             }
         },
-        [comunaName, dataType, view, filters],
+        [placeName, dataType, view, filters],
     );
 
     /**
@@ -576,11 +605,11 @@ function HomeComponent() {
     // (cargadas con H3HexagonLayer directamente desde `dataRecordsArray`) o
     // manzanas/entidades (se cargan las geometrías por separado)
     const dataLayer =
-        !comunaName || !dataAvailable
+        !placeName || !dataAvailable
             ? new GeoJsonLayer({ id: 'empty-layer', data: [] })
-            : dataType === 'h3'
+            : dataType !== 'manzent'
               ? new H3HexagonLayer({
-                    id: `h3-${comunaName}`,
+                    id: `h3-${placeName}`,
                     data: dataRecordsArray,
                     getHexagon: (d) => d.hex_id,
                     extruded: false,
@@ -596,8 +625,8 @@ function HomeComponent() {
                     pickable: true,
                 })
               : new GeoJsonLayer({
-                    id: `manzent-${comunaName}`,
-                    data: `/api/comuna/${comunaName}/manzent-geom/`,
+                    id: `manzent-${placeName}`,
+                    data: `/api/comuna/${placeName}/manzent-geom/`,
                     loaders: [FlatGeobufLoader],
                     stroked: true,
                     filled: true,
@@ -626,11 +655,14 @@ function HomeComponent() {
                 60,
                 60,
                 60,
-                !comunaName || d.properties.COMUNA !== comunaName ? 0.4 * 255 : 0,
+                !placeName ||
+                usedComunas.every((comuna) => d.properties.COMUNA !== comuna)
+                    ? 0.4 * 255
+                    : 0,
             ],
             maxZoom: 12,
             updateTriggers: {
-                getFillColor: [comunaName],
+                getFillColor: [placeName],
             },
             pickable: true,
             onClick: onClickGeoJson,
@@ -643,16 +675,20 @@ function HomeComponent() {
         <div className="flex w-full h-full">
             <aside className="flex h-full min-h-0 w-80 min-w-80 shrink-0 flex-col overflow-y-auto border-r border-slate-200 bg-white p-5 shadow-sm">
                 <Form
-                    comunasByRegion={comunasByRegion}
+                    placesByRegion={
+                        selectedDataType === 'h3_conurbacion'
+                            ? conurbacionesByRegion
+                            : comunasByRegion
+                    }
                     variablesList={variablesList}
                     maxFilters={MAX_FILTERS}
                     selectedRegion={selectedRegion}
-                    selectedComuna={selectedComuna}
+                    selectedPlace={selectedPlace}
                     selectedDataType={selectedDataType}
                     selectedView={selectedView}
                     selectedFilters={selectedFilters}
                     onRegionChange={setSelectedRegion}
-                    onComunaChange={setSelectedComuna}
+                    onPlaceChange={setSelectedPlace}
                     onDataTypeChange={(newType) =>
                         setSelectedDataType(isDataType(newType) ? newType : 'manzent')
                     }

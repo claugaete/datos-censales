@@ -15,7 +15,6 @@ dependencies = [
 
 [dependency-groups]
 datagen = [
-    "cudf-cu13==26.10.*",
     "h3>=4.5.0",
     "tobler>=0.14.0",
     "tqdm>=4.70.1",
@@ -33,6 +32,3 @@ dev = [
 [tool.jupytext]
 formats = "ipynb,py:percent"
 notebook_metadata_filter = "-all"
-
-[[tool.uv.index]]
-url = "https://pypi.nvidia.com/"

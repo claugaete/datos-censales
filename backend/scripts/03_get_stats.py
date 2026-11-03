@@ -9,8 +9,11 @@
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
+from scipy.sparse import csr_array
 from tobler.area_weighted import area_interpolate
+from tobler.area_weighted.area_interpolate import _area_tables_binning
 from tobler.util import h3fy
 from tqdm import tqdm
 
@@ -178,18 +181,6 @@ all_stats_h3_df.sample(10)
 # %% [markdown]
 # ### Cruces por celda
 
-# %% [markdown]
-# Esta sección requiere el uso de GPU. Demoró unos 35 minutos con mi GPU (RTX
-# 3060 Mobile).
-
-# %%
-import numba_cuda  # noqa: F401, I001
-import cudf
-import cupyx.scipy.sparse as cpx_sparse
-import numpy as np
-from scipy.sparse import csr_array
-from tobler.area_weighted.area_interpolate import _area_tables_binning
-
 # %%
 cuts = limites_urbanos["CUT"].unique()
 
@@ -197,7 +188,7 @@ cuts = limites_urbanos["CUT"].unique()
 for cut in tqdm(cuts):
     # obtenemos datos a nivel de manzent (n_vars filas x n_manzent columnas)
     try:
-        conteo_df: cudf.DataFrame = cudf.read_parquet(
+        conteo_df = pd.read_parquet(
             STATS_DATA_PATH / "cruces" / f"cruces_{cut}.parquet",
         )
     except FileNotFoundError:
@@ -205,7 +196,6 @@ for cut in tqdm(cuts):
     conteo_pivot = conteo_df.pivot(
         index=["var1", "cat1", "var2", "cat2"], columns="MANZENT", values="conteo"
     )
-    conteo_vals = conteo_pivot.to_cupy(na_value=0)
 
     # obtenemos matriz de pesos (n_manzent filas x n_h3 columnas)
     manzent_geoms = (
@@ -221,12 +211,11 @@ for cut in tqdm(cuts):
     # normalizamos pesos (cada manzana se divide por su área total)
     areas = np.repeat(manzent_geoms.area.values, np.diff(weights.indptr))
     np.divide(weights.data, areas, out=weights.data, where=areas != 0)
-    weights_gpu = cpx_sparse.csr_matrix(weights)
 
     # multiplicamos para obtener datos a nivel de celda
     # (n_vars filas x n_h3 columnas)
-    conteo_h3 = cudf.DataFrame(
-        conteo_vals @ weights_gpu, index=conteo_pivot.index, columns=h3_geoms.index
+    conteo_h3 = pd.DataFrame(
+        conteo_pivot.values @ weights, index=conteo_pivot.index, columns=h3_geoms.index
     )
 
     # volvemos a la forma original del dataframe y guardamos
@@ -236,7 +225,7 @@ for cut in tqdm(cuts):
         var_name="hex_id",
         value_name="conteo",
     )[["hex_id", "var1", "cat1", "var2", "cat2", "conteo"]]
-    df_melted.to_pandas().to_parquet(
+    df_melted.to_parquet(
         STATS_DATA_PATH / "cruces_h3" / f"cruces_{cut}.parquet"
     )
 
@@ -281,9 +270,6 @@ all_stats_conurbacion_df.sample(10)
 # ### Cruces por celda
 
 # %%
-import numpy as np
-from scipy.sparse import csr_array
-from tobler.area_weighted.area_interpolate import _area_tables_binning
 from tqdm.auto import tqdm
 
 # %%

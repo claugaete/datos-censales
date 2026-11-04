@@ -584,7 +584,8 @@ function HomeComponent() {
     );
 
     const getColor = useCallback(
-        (d: DataRecord) => {
+        (d: DataRecord | undefined) => {
+            if (!d) return NAN_COLOR;
             if (isBivariate) {
                 const bivariateLegend = legend as BivariateBins;
                 return getBivariateColor(

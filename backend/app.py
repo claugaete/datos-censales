@@ -1,12 +1,22 @@
-import json
 import logging
 import math
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Literal, TypedDict
 
+import duckdb
+import orjson
 import pandas as pd
-from flask import Flask, abort, jsonify, make_response, request, send_from_directory
+from flask import (
+    Flask,
+    Response,
+    abort,
+    jsonify,
+    make_response,
+    request,
+    send_from_directory,
+)
 from flask_cors import CORS
 from mapclassify import Quantiles
 from werkzeug.exceptions import HTTPException
@@ -185,12 +195,15 @@ def getPlaceData(
     if dataType == "manzent":
         general_data = stats_manzent_grouped.get(place)
         file_path = Path("cruces") / f"cruces_{comunas_cut.loc[place]}.parquet"
+        index_col = "MANZENT"
     elif dataType == "h3_comuna":
         general_data = stats_h3_grouped.get(place)
         file_path = Path("cruces_h3") / f"cruces_{comunas_cut.loc[place]}.parquet"
+        index_col = "hex_id"
     else:
         general_data = stats_conurbacion_grouped.get(place)
         file_path = Path("cruces_conurbacion") / f"cruces_{place}.parquet"
+        index_col = "hex_id"
 
     if general_data is None:
         abort(404, "NoComuna")
@@ -207,16 +220,16 @@ def getPlaceData(
     # leemos los conteos solicitados
     try:
         count_data = (
-            pd.read_parquet(
-                STATS_PATH / file_path,
-                filters=[
-                    ("var1", "==", var1),
-                    ("cat1", "==", cat1),
-                    ("var2", "==", var2),
-                    ("cat2", "==", cat2),
-                ],
-            )
-            .set_index("MANZENT" if dataType == "manzent" else "hex_id")[["conteo"]]
+            duckdb.connect()
+            .sql(f"""
+                SELECT {index_col}, SUM(conteo) as conteo
+                FROM read_parquet('{STATS_PATH / file_path}')
+                WHERE var1 = '{var1}' AND cat1 = '{cat1}'
+                AND var2 = '{var2}' AND cat2 = '{cat2}'
+                GROUP BY {index_col}
+            """)
+            .df()
+            .set_index(index_col)
             # solo manzanas válidas en la comuna
             .reindex(general_data.index)
             .fillna(0)
@@ -230,11 +243,13 @@ def getPlaceData(
     count_data["densidad"] = count_data["conteo"] / general_data["area"]
     count_data["porcentaje"] = count_data["conteo"] / general_data["poblacion"]
 
-    return general_data, count_data
+    return general_data.round(6), count_data.round(6)
 
 
 def getUnivariatePlaceData(
-    place: str, dataType: Literal["manzent", "h3"], filters: list[Filter]
+    place: str,
+    dataType: Literal["manzent", "h3_comuna", "h3_conurbacion"],
+    filters: list[Filter],
 ):
     """
     Obtiene los siguientes datos para cada "celda" de una comuna/conurbación
@@ -266,17 +281,19 @@ def getUnivariatePlaceData(
         for column in ("conteo", "densidad", "porcentaje")
     }
 
-    data_json = json.loads(all_data.to_json(orient="records"))
     payload = {
         "legend": max_values,
-        "data": data_json,
+        "data": all_data.to_dict(orient="records"),
     }
-    return jsonify(payload)
+    return Response(
+        orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY),
+        mimetype="application/json",
+    )
 
 
 def getBivariatePlaceData(
     place: str,
-    dataType: Literal["manzent", "h3"],
+    dataType: Literal["manzent", "h3_comuna", "h3_conurbacion"],
     filters: list[dict[str, str]],
 ):
     """
@@ -297,23 +314,29 @@ def getBivariatePlaceData(
     entregando los límites entre bins.
     """
 
-    general_data, count_data_X = getPlaceData(
-        place,
-        dataType,
-        filters[0].get("var"),
-        filters[0].get("catX"),
-        filters[1].get("var"),
-        filters[1].get("catX"),
-    )
+    # concurrently query both sets of counts
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        future_count = executor.submit(
+            getPlaceData,
+            place,
+            dataType,
+            filters[0].get("var"),
+            filters[0].get("catX"),
+            filters[1].get("var"),
+            filters[1].get("catX"),
+        )
+        future_other = executor.submit(
+            getPlaceData,
+            place,
+            dataType,
+            filters[0].get("var"),
+            filters[0].get("catY") or filters[0].get("catX"),
+            filters[1].get("var"),
+            filters[1].get("catY") or filters[1].get("catX"),
+        )
 
-    _, count_data_Y = getPlaceData(
-        place,
-        dataType,
-        filters[0].get("var"),
-        filters[0].get("catY") or filters[0].get("catX"),
-        filters[1].get("var"),
-        filters[1].get("catY") or filters[1].get("catX"),
-    )
+        general_data, count_data_X = future_count.result()
+        _, count_data_Y = future_other.result()
 
     legend = {}
 
@@ -327,13 +350,17 @@ def getBivariatePlaceData(
 
         general_data[axis] = general_data.index.map(count_data.to_dict(orient="index"))
 
-    data_json = json.loads(general_data.to_json(orient="records"))
-
     payload = {
         "legend": legend,
-        "data": data_json,
+        "data": general_data.to_dict(orient="records"),
     }
-    return jsonify(payload)
+
+    response = Response(
+        orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY),
+        mimetype="application/json",
+    )
+
+    return response
 
 
 def getFiltersFromRequest() -> list[Filter]:

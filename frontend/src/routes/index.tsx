@@ -697,11 +697,12 @@ function HomeComponent() {
                         setSelectedView(isView(newView) ? newView : 'conteo')
                     }
                     onFilterChange={(index, field, value) => {
+                        if (field !== 'catY' && !value) return;
                         setSelectedFilters((filters) =>
                             filters.map((filter, filterIndex) => {
                                 if (filterIndex !== index) return filter;
                                 if (field === 'variable') {
-                                    return { variable: value, catX: '' };
+                                    return { variable: value as string, catX: '' };
                                 }
                                 return { ...filter, [field]: value };
                             }),

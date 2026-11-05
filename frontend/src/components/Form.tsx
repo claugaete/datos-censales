@@ -28,7 +28,7 @@ type FormProps = {
     onPlaceChange: (comuna: string) => void;
     onDataTypeChange: (newType: string) => void;
     onViewChange: (newView: string) => void;
-    onFilterChange: (index: number, field: keyof Filter, value: string) => void;
+    onFilterChange: (index: number, field: keyof Filter, value?: string) => void;
     onSubmit: SubmitEventHandler<HTMLFormElement>;
 };
 
@@ -180,7 +180,9 @@ export function Form({
                                     className="flex flex-col gap-1 text-sm font-medium text-slate-700"
                                     htmlFor={`categoryX${index}`}
                                 >
-                                    Categoría X (obligatoria)
+                                    {filter.catY === undefined
+                                        ? 'Categoría'
+                                        : 'Categoría X'}
                                     <select
                                         className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                                         id={`categoryX${index}`}
@@ -201,30 +203,51 @@ export function Form({
                                 </label>
                             </div>
 
-                            <div className="rounded-md p-2">
-                                <label
-                                    className="flex flex-col gap-1 text-sm font-medium text-slate-700"
-                                    htmlFor={`categoryY${index}`}
+                            {filter.catY === undefined ? (
+                                <button
+                                    className="self-start rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
+                                    type="button"
+                                    onClick={() => onFilterChange(index, 'catY', '')}
+                                    disabled={!filter.variable}
                                 >
-                                    Categoría Y (opcional)
-                                    <select
-                                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                                        id={`categoryY${index}`}
-                                        value={filter.catY}
-                                        onChange={(event) =>
-                                            onFilterChange(index, 'catY', event.target.value)
-                                        }
-                                        disabled={!filter.variable}
-                                    >
-                                        <option value="">Selecciona una categoría</option>
-                                        {(variablesList[filter.variable] ?? []).map((category) => (
-                                            <option key={category} value={category}>
-                                                {category}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </label>
-                            </div>
+                                    Agregar Filtro Bivariado
+                                </button>
+                            ) : (
+                                <div className="rounded-md p-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <label
+                                            className="flex flex-col gap-1 text-sm font-medium text-slate-700"
+                                            htmlFor={`categoryY${index}`}
+                                        >
+                                            Categoría Y
+                                            <select
+                                                className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                                id={`categoryY${index}`}
+                                                value={filter.catY}
+                                                onChange={(event) =>
+                                                    onFilterChange(index, 'catY', event.target.value)
+                                                }
+                                                disabled={!filter.variable}
+                                            >
+                                                <option value="">Selecciona una categoría</option>
+                                                {(variablesList[filter.variable] ?? []).map((category) => (
+                                                    <option key={category} value={category}>
+                                                        {category}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </label>
+                                        <button
+                                            className="mt-5 shrink-0 rounded-md border border-red-300 px-3 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50"
+                                            type="button"
+                                            onClick={() => onFilterChange(index, 'catY')}
+                                            aria-label={`Eliminar Categoría Y del filtro ${index + 1}`}
+                                        >
+                                            <b>-</b>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
                         </div>
                     );

@@ -85,6 +85,7 @@ for comuna, comuna_gdf in tqdm(manzent.groupby("COMUNA")):
 
 # %%
 all_stats_df = pd.concat(all_stats.values())
+all_stats_df.index = all_stats_df.index.astype(int)
 all_stats_df.to_csv(STATS_DATA_PATH / "manzent.csv")
 
 # %%

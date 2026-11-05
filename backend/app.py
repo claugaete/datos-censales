@@ -194,19 +194,24 @@ def getPlaceData(
 
     if dataType == "manzent":
         general_data = stats_manzent_grouped.get(place)
-        file_path = Path("cruces") / f"cruces_{comunas_cut.loc[place]}.parquet"
+        file_path = STATS_PATH / "cruces" / f"cruces_{comunas_cut.loc[place]}.parquet"
         index_col = "MANZENT"
     elif dataType == "h3_comuna":
         general_data = stats_h3_grouped.get(place)
-        file_path = Path("cruces_h3") / f"cruces_{comunas_cut.loc[place]}.parquet"
+        file_path = (
+            STATS_PATH / "cruces_h3" / f"cruces_{comunas_cut.loc[place]}.parquet"
+        )
         index_col = "hex_id"
     else:
         general_data = stats_conurbacion_grouped.get(place)
-        file_path = Path("cruces_conurbacion") / f"cruces_{place}.parquet"
+        file_path = STATS_PATH / "cruces_conurbacion" / f"cruces_{place}.parquet"
         index_col = "hex_id"
 
     if general_data is None:
         abort(404, "NoComuna")
+
+    if not file_path.exists():
+        abort(404, "NoData")
 
     # damos vuelta variables si es necesario (abortamos si una de las
     # variables no existe)
@@ -218,25 +223,25 @@ def getPlaceData(
         abort(404, "NoVar")
 
     # leemos los conteos solicitados
-    try:
-        count_data = (
-            duckdb.connect()
-            .sql(f"""
-                SELECT {index_col}, SUM(conteo) as conteo
-                FROM read_parquet('{STATS_PATH / file_path}')
-                WHERE var1 = '{var1}' AND cat1 = '{cat1}'
-                AND var2 = '{var2}' AND cat2 = '{cat2}'
-                GROUP BY {index_col}
-            """)
-            .df()
-            .set_index(index_col)
-            # solo manzanas válidas en la comuna
-            .reindex(general_data.index)
-            .fillna(0)
-            .astype(float)
+    count_data = (
+        duckdb.connect()
+        .execute(
+            f"""
+            SELECT {index_col}, SUM(conteo) as conteo
+            FROM read_parquet('{STATS_PATH / file_path}')
+            WHERE var1 = ? AND cat1 = ?
+            AND var2 = ? AND cat2 = ?
+            GROUP BY {index_col}
+        """,
+            [var1, cat1, var2, cat2],
         )
-    except FileNotFoundError:
-        abort(404, "NoData")
+        .df()
+        .set_index(index_col)
+        # solo manzanas válidas en la comuna
+        .reindex(general_data.index)
+        .fillna(0)
+        .astype(float)
+    )
     if len(count_data) == 0:
         abort(404, "NoCat")
 

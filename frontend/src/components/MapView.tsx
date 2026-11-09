@@ -2,17 +2,17 @@ import type { Layer, MapViewState, PickingInfo } from '@deck.gl/core';
 import { DeckGL } from '@deck.gl/react';
 import { CompassWidget } from '@deck.gl/widgets';
 import type { MjolnirPointerEvent } from 'mjolnir.js';
-import { useState } from 'react';
 import Map, { StyleSpecification } from 'react-map-gl/maplibre';
 import chroma, { Scale } from 'chroma-js';
 
+import { numberToString, getBivariateColor } from '../utils/mapFormatters';
 import basemapStyle from '../../data/style.json';
-import { BivariateBins, Legend, ViewType } from '../types';
+import { BivariateBins, BivariateDataPoint, Legend, ViewType } from '../types';
 
 // definiciones de colores para la visualización
 export const scale: Scale = chroma.scale('Viridis');
 export const NAN_COLOR: [number, number, number] = [0, 0, 0];
-export const BIVARIATE_COLORS = [
+export const BIVARIATE_COLORS: string[][] = [
     ['#e8e8e8', '#ace4e4', '#5ac8c8'],
     ['#dfb0d6', '#a5add3', '#5698b9'],
     ['#be64ac', '#8c62aa', '#3b4994'],
@@ -35,35 +35,13 @@ type MapViewProps = {
     viewport: MapViewState;
     layers: Layer[];
     legend: Legend;
+    bivariateData: BivariateDataPoint[];
     view: ViewType;
     scale: Scale;
     tooltip?: Tooltip;
     onViewStateChange: (viewState: MapViewState) => void;
     onHover: (info: PickingInfo, event: MjolnirPointerEvent) => void;
 };
-
-/**
- * Convierte un número en una string, según la siguiente lógica:
- *
- * - Si no es un número, retorna N/A.
- * - Si es un número:
- *   - Lo multiplica por `factor`.
- *   - Si es entero, lo muestra sin decimales.
- *   - Si no es entero, lo muestra con dos decimales.
- *   - Le agrega el sufijo `suffix` (notar que este sufijo no se agrega si el
- *     número es N/A).
- *
- * @param n El número a mostrar.
- * @param suffix El sufijo a agregar (si el número existe).
- * @param factor El factor por el cual multiplicar el número.
- * @returns String con el nuevo número (de existir) y su sufijo.
- */
-export function numberToString(n: unknown, suffix: string = '', factor: number = 1) {
-    if (typeof n !== 'number') return 'N/A';
-    const nScaled = (n as number) * factor;
-    if (Number.isInteger(nScaled)) return nScaled.toLocaleString('es-CL') + suffix;
-    return Number(nScaled.toFixed(2)).toLocaleString('es-CL') + suffix;
-}
 
 /**
  * Atribución que va en la esquina inferior derecha del mapa.
@@ -104,7 +82,7 @@ function UnivariateLegend({
 }) {
     return (
         <div
-            aria-label="Leyenda de población"
+            aria-label="Leyenda univariada"
             className="pointer-events-auto absolute bottom-2 left-2 z-2 w-52 rounded-xl bg-white px-3 py-2 text-xs shadow-sm"
         >
             <div className="mb-1 font-medium">{LEGEND_LABELS[view]}</div>
@@ -126,69 +104,84 @@ function UnivariateLegend({
     );
 }
 
-function BivariateLegend({ bins, view }: { bins: BivariateBins; view: ViewType }) {
-    const [hoveredRange, setHoveredRange] = useState<string>();
+function BivariateLegend({
+    bins,
+    data,
+    view,
+}: {
+    bins: BivariateBins;
+    data: BivariateDataPoint[];
+    view: ViewType;
+}) {
     const formatBound = (value: number) =>
         view === 'porcentaje' ? numberToString(value, '%', 100) : numberToString(value);
-    const xBounds = bins.X[view];
-    const yBounds = bins.Y[view];
-    const hasBins = [...xBounds, ...yBounds].some((bound) => bound > 0);
-    const range = (bounds: [number, number, number], index: number) => {
-        const lowerBound = index === 0 ? 0 : bounds[index - 1];
-        return `${formatBound(lowerBound)} - ${formatBound(bounds[index])}`;
-    };
+    const points = data.flatMap((record, index) => {
+        const x = record.X?.[view];
+        const y = record.Y?.[view];
+        return typeof x === 'number' &&
+            Number.isFinite(x) &&
+            typeof y === 'number' &&
+            Number.isFinite(y)
+            ? [{ index, x, y }]
+            : [];
+    });
+    const xMax = bins.X[view][2] ?? 0;
+    const yMax = bins.Y[view][2] ?? 0;
+
+    if (points.length === 0) return null;
 
     return (
         <div
             aria-label="Leyenda bivariada"
-            className="pointer-events-auto absolute bottom-2 left-2 z-2 rounded-xl bg-white px-3 py-2 text-xs shadow-sm"
+            className="pointer-events-auto absolute bottom-2 left-2 z-2 w-60 rounded-xl bg-white px-3 py-2 text-xs shadow-sm"
         >
-            {hasBins && (
-                <div className="flex items-start gap-2">
-                    <div>
-                        <div className="relative h-36 w-36 border border-gray-400">
-                            <div className="grid h-full w-full grid-cols-3 grid-rows-3">
-                                {[...BIVARIATE_COLORS]
-                                    .reverse()
-                                    .flatMap((row, rowIndex) =>
-                                        row.map((color, columnIndex) => (
-                                            <div
-                                                aria-label={`X: ${range(xBounds, columnIndex)}, Y: ${range(yBounds, 2 - rowIndex)}`}
-                                                className="border border-white"
-                                                key={`${rowIndex}-${columnIndex}`}
-                                                style={{ backgroundColor: color }}
-                                                onMouseEnter={() =>
-                                                    setHoveredRange(
-                                                        `X: ${range(xBounds, columnIndex)}\nY: ${range(yBounds, 2 - rowIndex)}`,
-                                                    )
-                                                }
-                                                onMouseLeave={() =>
-                                                    setHoveredRange(undefined)
-                                                }
-                                            />
-                                        )),
-                                    )}
-                            </div>
-                            {hoveredRange && (
-                                <div className="pointer-events-none absolute bottom-2 left-1/2 z-10 -translate-x-1/2 whitespace-pre rounded bg-gray-800 px-2 py-1 text-xs text-white shadow">
-                                    {hoveredRange}
-                                </div>
-                            )}
-                        </div>
-                        <div className="mt-2 text-center font-medium">X →</div>
-                    </div>
-                    <div className="relative h-36 w-4 font-medium">
-                        <span
-                            className="absolute left-1/2 top-1/2 whitespace-nowrap"
-                            style={{
-                                transform: 'translate(-50%, -50%)',
-                            }}
-                        >
-                            ↑<br />Y
+            <>
+                <div className="mb-1 font-medium">Distribución de valores</div>
+                <div className="flex items-start gap-0">
+                    <div className="relative flex h-40 w-12 shrink-0 flex-col justify-between text-right text-gray-700">
+                        <span>{formatBound(yMax)}</span>
+                        <span className="absolute top-1/2 right-1/4 -translate-y-1/2 -rotate-90 font-medium">
+                            Y →
                         </span>
+                        <span>{formatBound(0)}</span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                        <div
+                            className="relative h-40 border border-gray-400 bg-gray-50"
+                            role="img"
+                            aria-label={'Gráfico de distribución'}
+                        >
+                            {points.map(({ index, x, y }) => (
+                                <span
+                                    className="absolute h-1.5 w-1.5 -translate-x-1/2 translate-y-1/2 rounded-full border border-white/60"
+                                    key={`${index}-${x}-${y}`}
+                                    title={`X: ${formatBound(x)}\nY: ${formatBound(y)}`}
+                                    style={{
+                                        bottom: `${(y / yMax) * 100}%`,
+                                        left: `${(x / xMax) * 100}%`,
+                                        backgroundColor: chroma(
+                                            getBivariateColor(
+                                                x,
+                                                y,
+                                                bins.X[view],
+                                                bins.Y[view],
+                                                BIVARIATE_COLORS,
+                                                NAN_COLOR,
+                                            ),
+                                        ).hex(),
+                                        opacity: 0.8,
+                                    }}
+                                />
+                            ))}
+                        </div>
+                        <div className="mt-1 flex justify-between text-gray-700">
+                            <span>{formatBound(0)}</span>
+                            <span>X →</span>
+                            <span>{formatBound(xMax)}</span>
+                        </div>
                     </div>
                 </div>
-            )}
+            </>
         </div>
     );
 }
@@ -197,6 +190,7 @@ export function MapView({
     viewport,
     layers,
     legend,
+    bivariateData,
     view,
     scale,
     tooltip,
@@ -226,15 +220,17 @@ export function MapView({
                     {tooltip.text}
                 </div>
             )}
-            {'X' in legend
-                ? legend.X[view] && <BivariateLegend bins={legend} view={view} />
-                : legend[view] && (
-                      <UnivariateLegend
-                          maxValue={legend[view]}
-                          view={view}
-                          scale={scale}
-                      />
-                  )}
+            {'X' in legend ? (
+                <BivariateLegend bins={legend} data={bivariateData} view={view} />
+            ) : (
+                legend[view] && (
+                    <UnivariateLegend
+                        maxValue={legend[view]}
+                        view={view}
+                        scale={scale}
+                    />
+                )
+            )}
             {mapAttribution}
         </div>
     );

@@ -1,7 +1,6 @@
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import chroma from 'chroma-js';
 import { GeoJsonLayer } from '@deck.gl/layers';
 import { H3HexagonLayer, MVTLayer } from '@deck.gl/geo-layers';
 import { WebMercatorViewport, LinearInterpolator, MapViewState } from '@deck.gl/core';
@@ -11,14 +10,13 @@ import '@deck.gl/widgets/stylesheet.css';
 import { FlatGeobufLoader } from '@loaders.gl/flatgeobuf';
 import toast from 'react-hot-toast';
 
-import { Form } from '../components/Form';
 import {
-    scale,
-    NAN_COLOR,
-    BIVARIATE_COLORS,
-    MapView,
     numberToString,
-} from '../components/MapView';
+    getBivariateColor,
+    getUnivariateColor,
+} from '../utils/mapFormatters';
+import { Form } from '../components/Form';
+import { scale, NAN_COLOR, BIVARIATE_COLORS, MapView } from '../components/MapView';
 import { setWorkerUrl } from 'maplibre-gl';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -125,45 +123,6 @@ function isValidPlace(
         typeof placeName === 'string' &&
         Object.values(placesByRegion).some((places) => places.includes(placeName))
     );
-}
-
-/**
- * Obtiene el color asociado a un cierto valor, para una sola variable.
- *
- * @param value El valor de la celda.
- * @param maxValue El valor máximo entre las celdas (asociado al color máximo
- * de la escala).
- * @returns Color asociado al valor, en formato RGB.
- */
-function getUnivariateColor(value: number | null, maxValue: number) {
-    if (typeof value !== 'number') return NAN_COLOR;
-    const fraction = maxValue > 0 ? value / maxValue : 0;
-    return scale(fraction).rgb() as [number, number, number];
-}
-
-/**
- * Obtiene el color asociado a un cierto valor, para dos variables.
- *
- * @param valueX El valor de la celda para la variable X.
- * @param valueY El valor de la celda para la variable Y.
- * @param binsX La cota superior para cada uno de los "grupos" en los que se
- * divide la variable X.
- * @param binsY La cota superior para cada uno de los "grupos" en los que se
- * divide la variable Y.
- * @returns Color asociado al valor, en formato RGB.
- */
-function getBivariateColor(
-    valueX: number | null,
-    valueY: number | null,
-    binsX: [number, number, number],
-    binsY: [number, number, number],
-) {
-    if (typeof valueX !== 'number' || typeof valueY !== 'number') return NAN_COLOR;
-
-    const colorX = valueX <= binsX[0] ? 0 : valueX <= binsX[1] ? 1 : 2;
-    const colorY = valueY <= binsY[0] ? 0 : valueY <= binsY[1] ? 1 : 2;
-
-    return chroma(BIVARIATE_COLORS[colorY][colorX]).rgb() as [number, number, number];
 }
 
 function filterToString(filter: Filter) {
@@ -593,10 +552,17 @@ function HomeComponent() {
                     d.Y?.[view] ?? null,
                     bivariateLegend.X[view],
                     bivariateLegend.Y[view],
+                    BIVARIATE_COLORS,
+                    NAN_COLOR,
                 );
             } else {
                 const univariateLegend = legend as UnivariateMaxValues;
-                return getUnivariateColor(d[view] ?? null, univariateLegend[view]);
+                return getUnivariateColor(
+                    d[view] ?? null,
+                    univariateLegend[view],
+                    scale,
+                    NAN_COLOR,
+                );
             }
         },
         [legend, view, isBivariate],
@@ -715,6 +681,7 @@ function HomeComponent() {
                 viewport={viewport}
                 layers={layers}
                 legend={legend}
+                bivariateData={dataRecordsArray}
                 view={view}
                 scale={scale}
                 tooltip={tooltip}

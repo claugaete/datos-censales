@@ -51,6 +51,11 @@ export const BIVARIATE_BINS_DEFAULT: BivariateBins = {
     },
 };
 
+export type BivariateDataPoint = {
+    X?: Record<ViewType, number | null>;
+    Y?: Record<ViewType, number | null>;
+};
+
 export type Legend = UnivariateMaxValues | BivariateBins;
 
 /**

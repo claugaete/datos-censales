@@ -244,6 +244,7 @@ def getPlaceData(
     )
     if len(count_data) == 0:
         abort(404, "NoCat")
+    print(count_data)
 
     count_data["densidad"] = count_data["conteo"] / general_data["area"]
     count_data["porcentaje"] = count_data["conteo"] / general_data["poblacion"]

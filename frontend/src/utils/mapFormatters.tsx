@@ -1,4 +1,5 @@
 import chroma, { Scale } from 'chroma-js';
+import { TableType } from '../types';
 
 /**
  * Convierte un número en una string, según la siguiente lógica:
@@ -21,6 +22,12 @@ export function numberToString(n: unknown, suffix: string = '', factor: number =
     const nScaled = (n as number) * factor;
     if (Number.isInteger(nScaled)) return nScaled.toLocaleString('es-CL') + suffix;
     return Number(nScaled.toFixed(2)).toLocaleString('es-CL') + suffix;
+}
+
+export const tableToAbbreviation: Record<TableType, string> = {
+    'personas': 'hab.',
+    'hogares': 'hog.',
+    'viviendas': 'viv.',
 }
 
 /**

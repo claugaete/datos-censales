@@ -1,5 +1,5 @@
 import type { SubmitEventHandler } from 'react';
-import { DataType, ViewType, Filter } from '../types';
+import { DataType, ViewType, TableType, Filter } from '../types';
 
 // mapeo de cada tipo de dato con el texto a mostrar en el formulario
 const DATA_TYPE_OPTIONS: Record<DataType, string> = {
@@ -15,6 +15,13 @@ const VIEW_OPTIONS: Record<ViewType, string> = {
     porcentaje: 'Porcentaje',
 };
 
+// mapeo de cada vista con el texto a mostrar en el formulario
+const TABLE_OPTIONS: Record<TableType, string> = {
+    personas: 'Personas',
+    hogares: 'Hogares',
+    viviendas: 'Viviendas',
+};
+
 type FormProps = {
     placesByRegion: Record<string, string[]>;
     variablesList: Record<string, string[]>;
@@ -23,11 +30,13 @@ type FormProps = {
     selectedPlace: string;
     selectedDataType: string;
     selectedView: string;
+    selectedTable: string;
     selectedFilters: Filter[];
     onRegionChange: (region: string) => void;
     onPlaceChange: (comuna: string) => void;
     onDataTypeChange: (newType: string) => void;
     onViewChange: (newView: string) => void;
+    onTableChange: (newTable: string) => void;
     onFilterChange: (index: number, field: keyof Filter, value?: string) => void;
     onSubmit: SubmitEventHandler<HTMLFormElement>;
 };
@@ -40,11 +49,13 @@ export function Form({
     selectedPlace,
     selectedDataType,
     selectedView,
+    selectedTable,
     selectedFilters,
     onRegionChange,
     onPlaceChange,
     onDataTypeChange,
     onViewChange,
+    onTableChange,
     onFilterChange,
     onSubmit,
 }: FormProps) {
@@ -134,6 +145,23 @@ export function Form({
                     onChange={(event) => onViewChange(event.target.value)}
                 >
                     {Object.entries(VIEW_OPTIONS).map(([key, value]) => (
+                        <option key={key} value={key}>{value}</option>
+                    ))}
+                </select>
+            </label>
+
+            <label
+                className="flex flex-col gap-1 text-sm font-medium text-slate-700"
+                htmlFor="tableType"
+            >
+                Tabla
+                <select
+                    className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-normal text-slate-900 shadow-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-200"
+                    id="dataType"
+                    value={selectedTable}
+                    onChange={(event) => onTableChange(event.target.value)}
+                >
+                    {Object.entries(TABLE_OPTIONS).map(([key, value]) => (
                         <option key={key} value={key}>{value}</option>
                     ))}
                 </select>

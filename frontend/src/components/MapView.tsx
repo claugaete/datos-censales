@@ -7,7 +7,7 @@ import chroma, { Scale } from 'chroma-js';
 
 import { numberToString, getBivariateColor } from '../utils/mapFormatters';
 import basemapStyle from '../../data/style.json';
-import { BivariateBins, BivariateDataPoint, Legend, ViewType } from '../types';
+import { BivariateBins, BivariateDataPoint, Legend, TableType, ViewType } from '../types';
 
 // definiciones de colores para la visualización
 export const scale: Scale = chroma.scale('Viridis');
@@ -19,10 +19,22 @@ export const BIVARIATE_COLORS: string[][] = [
 ] as const;
 
 // mapeo de cada tipo de vista con el texto a mostrar en la leyenda
-const LEGEND_LABELS: Record<ViewType, string> = {
-    conteo: 'Población filtrada (hab.)',
-    densidad: 'Densidad (hab./km²)',
-    porcentaje: 'Porcentaje de población total',
+const LEGEND_LABELS: Record<ViewType, Record<TableType, string>> = {
+    conteo: {
+        personas: 'Población filtrada (hab.)',
+        hogares: 'Hogares filtrados',
+        viviendas: 'Viviendas filtradas',
+    },
+    densidad: {
+        personas: 'Densidad (hab./km²)',
+        hogares: 'Densidad (hog./km²)',
+        viviendas: 'Densidad (viv./km²)',
+    },
+    porcentaje: {
+        personas: 'Porcentaje de población total',
+        hogares: 'Porcentaje de hogares totales',
+        viviendas: 'Porcentaje de viviendas totales',
+    },
 };
 
 type Tooltip = {
@@ -37,6 +49,7 @@ type MapViewProps = {
     legend: Legend;
     bivariateData: BivariateDataPoint[];
     view: ViewType;
+    table: TableType;
     scale: Scale;
     tooltip?: Tooltip;
     onViewStateChange: (viewState: MapViewState) => void;
@@ -74,10 +87,12 @@ const mapAttribution = (
 function UnivariateLegend({
     maxValue,
     view,
+    table,
     scale,
 }: {
     maxValue: number;
     view: ViewType;
+    table: TableType;
     scale: Scale;
 }) {
     return (
@@ -85,7 +100,7 @@ function UnivariateLegend({
             aria-label="Leyenda univariada"
             className="pointer-events-auto absolute bottom-2 left-2 z-2 w-52 rounded-xl bg-white px-3 py-2 text-xs shadow-sm"
         >
-            <div className="mb-1 font-medium">{LEGEND_LABELS[view]}</div>
+            <div className="mb-1 font-medium">{LEGEND_LABELS[view][table]}</div>
             <div
                 className="h-3 rounded-sm border border-gray-300"
                 style={{
@@ -192,6 +207,7 @@ export function MapView({
     legend,
     bivariateData,
     view,
+    table,
     scale,
     tooltip,
     onViewStateChange,
@@ -227,6 +243,7 @@ export function MapView({
                     <UnivariateLegend
                         maxValue={legend[view]}
                         view={view}
+                        table={table}
                         scale={scale}
                     />
                 )

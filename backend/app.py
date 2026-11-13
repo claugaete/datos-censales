@@ -50,9 +50,8 @@ stats_manzent = pd.read_csv(PROCESSED_DATA_PATH / "stats" / "manzent.csv")
 stats_h3 = pd.read_csv(PROCESSED_DATA_PATH / "stats" / "h3_comuna.csv")
 stats_conurbaciones = pd.read_csv(PROCESSED_DATA_PATH / "stats" / "h3_conurbacion.csv")
 
-cruces_variables = pd.read_json(
-    PROCESSED_DATA_PATH / "stats" / "variables.json", orient="index"
-).index.to_list()
+with open(PROCESSED_DATA_PATH / "stats" / "variables.json") as f:
+    variables = orjson.loads(f.read())
 
 stats_manzent_grouped = {
     comuna: group.set_index("MANZENT", drop=False).drop(columns="COMUNA")
@@ -176,6 +175,7 @@ def getComunaManzentGeom(comuna: str):
 def getPlaceData(
     place: str,
     dataType: Literal["manzent", "h3_comuna", "h3_conurbacion"],
+    table: Literal["personas", "hogares", "viviendas"],
     var1: str,
     cat1: str,
     var2: str,
@@ -194,17 +194,24 @@ def getPlaceData(
 
     if dataType == "manzent":
         general_data = stats_manzent_grouped.get(place)
-        file_path = STATS_PATH / "cruces" / f"cruces_{comunas_cut.loc[place]}.parquet"
+        file_path = (
+            STATS_PATH / "cruces" / table / f"cruces_{comunas_cut.loc[place]}.parquet"
+        )
         index_col = "MANZENT"
     elif dataType == "h3_comuna":
         general_data = stats_h3_grouped.get(place)
         file_path = (
-            STATS_PATH / "cruces_h3" / f"cruces_{comunas_cut.loc[place]}.parquet"
+            STATS_PATH
+            / "cruces_h3"
+            / table
+            / f"cruces_{comunas_cut.loc[place]}.parquet"
         )
         index_col = "hex_id"
     else:
         general_data = stats_conurbacion_grouped.get(place)
-        file_path = STATS_PATH / "cruces_conurbacion" / f"cruces_{place}.parquet"
+        file_path = (
+            STATS_PATH / "cruces_conurbacion" / table / f"cruces_{place}.parquet"
+        )
         index_col = "hex_id"
 
     if general_data is None:
@@ -215,8 +222,9 @@ def getPlaceData(
 
     # damos vuelta variables si es necesario (abortamos si una de las
     # variables no existe)
+    variables_list = list(variables[table].keys())
     try:
-        if cruces_variables.index(var1) > cruces_variables.index(var2):
+        if variables_list.index(var1) > variables_list.index(var2):
             var1, var2 = var2, var1
             cat1, cat2 = cat2, cat1
     except ValueError:
@@ -247,7 +255,10 @@ def getPlaceData(
     print(count_data)
 
     count_data["densidad"] = count_data["conteo"] / general_data["area"]
-    count_data["porcentaje"] = count_data["conteo"] / general_data["poblacion"]
+    count_data["porcentaje"] = (
+        count_data["conteo"]
+        / general_data["poblacion" if table == "personas" else table]
+    )
 
     return general_data.round(6), count_data.round(6)
 
@@ -255,6 +266,7 @@ def getPlaceData(
 def getUnivariatePlaceData(
     place: str,
     dataType: Literal["manzent", "h3_comuna", "h3_conurbacion"],
+    table: Literal["personas", "hogares", "viviendas"],
     filters: list[Filter],
 ):
     """
@@ -274,6 +286,7 @@ def getUnivariatePlaceData(
     general_data, count_data = getPlaceData(
         place,
         dataType,
+        table,
         filters[0].get("var"),
         filters[0].get("catX"),
         filters[1].get("var"),
@@ -300,6 +313,7 @@ def getUnivariatePlaceData(
 def getBivariatePlaceData(
     place: str,
     dataType: Literal["manzent", "h3_comuna", "h3_conurbacion"],
+    table: Literal["personas", "hogares", "viviendas"],
     filters: list[dict[str, str]],
 ):
     """
@@ -326,6 +340,7 @@ def getBivariatePlaceData(
             getPlaceData,
             place,
             dataType,
+            table,
             filters[0].get("var"),
             filters[0].get("catX"),
             filters[1].get("var"),
@@ -335,6 +350,7 @@ def getBivariatePlaceData(
             getPlaceData,
             place,
             dataType,
+            table,
             filters[0].get("var"),
             filters[0].get("catY") or filters[0].get("catX"),
             filters[1].get("var"),
@@ -393,8 +409,8 @@ def getFiltersFromRequest() -> list[Filter]:
     return parsed_filters
 
 
-@app.route("/api/comuna/<comuna>/manzent-data/")
-def getComunaManzentData(comuna: str):
+@app.route("/api/comuna/<comuna>/manzent-data/<table>/")
+def getComunaManzentData(comuna: str, table: str):
     """
     Obtiene los datos de `getPlaceData` para cada manzana/entidad de una
     comuna.
@@ -402,12 +418,12 @@ def getComunaManzentData(comuna: str):
 
     filters = getFiltersFromRequest()
     if any(f["catY"] is not None for f in filters):
-        return getBivariatePlaceData(comuna, "manzent", filters)
-    return getUnivariatePlaceData(comuna, "manzent", filters)
+        return getBivariatePlaceData(comuna, "manzent", table, filters)
+    return getUnivariatePlaceData(comuna, "manzent", table, filters)
 
 
-@app.route("/api/comuna/<comuna>/h3-data")
-def getComunaH3Data(comuna: str):
+@app.route("/api/comuna/<comuna>/h3-data/<table>/")
+def getComunaH3Data(comuna: str, table: str):
     """
     Obtiene los datos de `getPlaceData` para cada celda de H3 de una comuna
     (solo considerando su área urbana).
@@ -415,12 +431,12 @@ def getComunaH3Data(comuna: str):
 
     filters = getFiltersFromRequest()
     if any(f["catY"] is not None for f in filters):
-        return getBivariatePlaceData(comuna, "h3_comuna", filters)
-    return getUnivariatePlaceData(comuna, "h3_comuna", filters)
+        return getBivariatePlaceData(comuna, "h3_comuna", table, filters)
+    return getUnivariatePlaceData(comuna, "h3_comuna", table, filters)
 
 
-@app.route("/api/conurbacion/<conurbacion>/h3-data")
-def getConurbacionH3Data(conurbacion: str):
+@app.route("/api/conurbacion/<conurbacion>/h3-data/<table>/")
+def getConurbacionH3Data(conurbacion: str, table: str):
     """
     Obtiene los datos de `getPlaceData` para cada celda de H3 de una
     conurbación.
@@ -428,8 +444,8 @@ def getConurbacionH3Data(conurbacion: str):
 
     filters = getFiltersFromRequest()
     if any(f["catY"] is not None for f in filters):
-        return getBivariatePlaceData(conurbacion, "h3_conurbacion", filters)
-    return getUnivariatePlaceData(conurbacion, "h3_conurbacion", filters)
+        return getBivariatePlaceData(conurbacion, "h3_conurbacion", table, filters)
+    return getUnivariatePlaceData(conurbacion, "h3_conurbacion", table, filters)
 
 
 if __name__ == "__main__":

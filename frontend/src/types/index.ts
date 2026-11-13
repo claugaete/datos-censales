@@ -20,6 +20,16 @@ export function isView(value: unknown): value is ViewType {
     return typeof value === 'string' && VIEW_TYPES.some((view) => view === value);
 }
 
+const TABLE_TYPES = ['personas', 'hogares', 'viviendas'] as const;
+
+/**
+ * Tablas posibles a solicitar.
+ */
+export type TableType = (typeof TABLE_TYPES)[number];
+export function isTable(value: unknown): value is TableType {
+    return typeof value === 'string' && TABLE_TYPES.some((table) => table === value);
+}
+
 /**
  * Valor máximo de cada vista posible en los datos solicitados.
  */

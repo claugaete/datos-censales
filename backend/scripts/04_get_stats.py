@@ -4,6 +4,10 @@
 # En este script, utilizamos los datos a nivel de manzana para generar las
 # distintas estadísticas que se visualizarán en la aplicación (con distintas
 # resoluciones) y se disponibilizarán para su descarga.
+#
+# **IMPORTANTE**: actualmente los datos a nivel de celda H3 (comuna y
+# conurbación) solamente se encuentran disponibles para los datos de personas,
+# no viviendas ni hogares.
 
 # %%
 from pathlib import Path
@@ -68,6 +72,8 @@ def generate_stats(comuna_gdf: gpd.GeoDataFrame) -> pd.DataFrame:
     return pd.DataFrame(
         data={
             "poblacion": comuna_gdf.n_per,
+            "hogares": comuna_gdf.n_hog,
+            "viviendas": comuna_gdf.n_vp,
             "area": comuna_gdf.to_crs(5361).area / 1_000_000,
         },
         index=comuna_gdf.index,
@@ -99,31 +105,32 @@ all_stats_df.sample(10)
 # el frontend de la aplicación puede mostrarlas como opciones al usuario).
 
 # %%
-conteo_df = pd.read_parquet(
-    # usamos la comuna con más filas para asegurar que estén todas las
-    # categorías posibles
-    STATS_DATA_PATH / "cruces" / "cruces_13201.parquet",
-    engine="pyarrow",
-)
-
-# %%
 possible_values = {}
-for var in conteo_df["var1"].drop_duplicates():
-    values = conteo_df[conteo_df["var1"] == var]["cat1"].drop_duplicates().to_list()
-    possible_values[var] = values
 
-# agregamos la última categoría manualmente porque solo está presente en var2,
-# no var1
-possible_values["transporte"] = [
-    "transporte_auto",
-    "transporte_publico",
-    "transporte_camina",
-    "transporte_bicicleta",
-    "transporte_motocicleta",
-    "transporte_cab_lan_bote",
-    "transporte_otros",
-    "resto",
-]
+for tipo in ("personas", "hogares", "viviendas"):
+    conteo_df = pd.read_parquet(
+        # usamos la comuna con más filas para asegurar que estén todas las
+        # categorías posibles
+        STATS_DATA_PATH / "cruces" / tipo / "cruces_13201.parquet",
+        engine="pyarrow",
+    )
+
+    possible_values_tipo = {}
+    for var in pd.concat(
+        [conteo_df["var1"].drop_duplicates(), conteo_df["var2"].drop_duplicates()]
+    ).drop_duplicates():
+        values = (
+            pd.concat(
+                [
+                    conteo_df[conteo_df["var1"] == var]["cat1"].drop_duplicates(),
+                    conteo_df[conteo_df["var2"] == var]["cat2"].drop_duplicates(),
+                ]
+            )
+            .drop_duplicates()
+            .to_list()
+        )
+        possible_values_tipo[var] = values
+    possible_values[tipo] = possible_values_tipo
 
 # %%
 pd.Series(possible_values).to_json(STATS_DATA_PATH / "variables.json")

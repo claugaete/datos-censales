@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 
 import {
     numberToString,
+    tableToAbbreviation,
     getBivariateColor,
     getUnivariateColor,
 } from '../utils/mapFormatters';
@@ -22,6 +23,8 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {
     DataType,
+    TableType,
+    isTable,
     UNIVARIATE_MAX_VALUES_DEFAULT,
     BIVARIATE_BINS_DEFAULT,
     UnivariateMaxValues,
@@ -41,6 +44,7 @@ type DataSearch = {
     dataType?: DataType;
     placeName?: string;
     view?: ViewType;
+    table?: TableType;
     filter: string[];
 };
 
@@ -52,7 +56,7 @@ type PlacesByRegion = Record<string, string[]>;
 /**
  * Asocia a cada variable con sus categorías (valores posibles).
  */
-type VariablesList = Record<string, string[]>;
+type VariablesList = Record<TableType, Record<string, string[]>>;
 const MAX_FILTERS = 2;
 
 /**
@@ -72,6 +76,8 @@ type DataRecord = {
     MANZENT?: string;
     hex_id?: string;
     poblacion: number;
+    hogares: number;
+    viviendas: number;
     area: number;
     conteo?: number;
     densidad?: number;
@@ -158,6 +164,7 @@ function HomeComponent() {
         dataType: dataTypeParam,
         placeName,
         view: viewParam,
+        table: tableParam,
         filter: filterParam,
     } = useSearch({ from: '/' });
     const filterParamKey = filterParam.join('\0');
@@ -166,11 +173,16 @@ function HomeComponent() {
     }, [filterParamKey]);
     const dataType = dataTypeParam ?? 'manzent';
     const view = viewParam ?? 'conteo';
+    const table = tableParam ?? 'personas';
     const isBivariate = filters.length > 0 && filters.some((f) => f.catY !== undefined);
 
     const navigate = useNavigate();
 
-    const [variablesList, setVariablesList] = useState<VariablesList>({});
+    const [variablesList, setVariablesList] = useState<VariablesList>({
+        personas: {},
+        hogares: {},
+        viviendas: {},
+    });
     const [comunasByConurbacion, setComunasByConurbacion] = useState<
         Record<string, string[]>
     >({});
@@ -193,6 +205,7 @@ function HomeComponent() {
     const [selectedPlace, setSelectedPlace] = useState<string>(placeName ?? '');
     const [selectedDataType, setSelectedDataType] = useState(dataType);
     const [selectedView, setSelectedView] = useState(view);
+    const [selectedTable, setSelectedTable] = useState(table);
     const [selectedFilters, setSelectedFilters] = useState<Filter[]>(() =>
         Array.from(
             { length: MAX_FILTERS },
@@ -270,6 +283,7 @@ function HomeComponent() {
         setSelectedPlace(validPlaceName);
         setSelectedDataType(dataType);
         setSelectedView(view);
+        setSelectedTable(table);
         const matchingRegion = Object.entries(placesByRegion).find(([, places]) =>
             places.includes(validPlaceName),
         );
@@ -285,7 +299,8 @@ function HomeComponent() {
                 `/api/` +
                 `${dataType === 'h3_conurbacion' ? 'conurbacion' : 'comuna'}/` +
                 `${validPlaceName}/` +
-                `${dataType === 'manzent' ? 'manzent' : 'h3'}-data/`;
+                `${dataType === 'manzent' ? 'manzent' : 'h3'}-data/` +
+                `${table}/`;
             const urlFilters = new URLSearchParams();
             filters.forEach((filter) =>
                 urlFilters.append('filter', filterToString(filter)),
@@ -339,7 +354,7 @@ function HomeComponent() {
                 loading: 'Cargando datos...',
             });
         }
-    }, [validPlaceName, dataType, filters, placesByRegion]);
+    }, [validPlaceName, dataType, view, table, filters, placesByRegion]);
 
     /**
      * Realiza un zoom a la bounding box solicitada.
@@ -400,6 +415,7 @@ function HomeComponent() {
                     placeName: undefined,
                     dataType,
                     view,
+                    table,
                     filter: selectedFilters
                         .filter((filter) => filter.variable && filter.catX)
                         .map(filterToString),
@@ -413,7 +429,7 @@ function HomeComponent() {
      * `dataType` y `view` con valores por defecto si los valores recibidos no
      * son válidos.
      */
-    const handleSubmit = ({ placeName, dataType, view, filter }: DataSearch) => {
+    const handleSubmit = ({ placeName, dataType, view, table, filter }: DataSearch) => {
         navigate({
             to: '/',
             replace: true,
@@ -421,6 +437,7 @@ function HomeComponent() {
                 placeName,
                 dataType: isDataType(dataType) ? dataType : 'manzent',
                 view: isView(view) ? view : 'conteo',
+                table: isTable(table) ? table : 'personas',
                 filter,
             },
         });
@@ -441,6 +458,7 @@ function HomeComponent() {
                 placeName: selectedPlace,
                 dataType: selectedDataType,
                 view: selectedView,
+                table: selectedTable,
                 filter: selectedFilters.map(filterToString),
             });
         }
@@ -457,11 +475,12 @@ function HomeComponent() {
                     placeName: newComuna,
                     dataType: dataType === 'h3_conurbacion' ? 'h3_comuna' : dataType,
                     view: view,
+                    table: table,
                     filter: filters.map(filterToString),
                 });
             }
         },
-        [placeName, dataType, view, filters],
+        [placeName, dataType, view, table, filters],
     );
 
     /**
@@ -477,8 +496,8 @@ function HomeComponent() {
             porcentaje: number | undefined | null,
         ) {
             return (
-                `Población filtrada: ${numberToString(conteo, ' hab.')}\n` +
-                `Densidad: ${numberToString(densidad, ' hab./km²')}\n` +
+                `Conteo filtrado: ${numberToString(conteo, ` ${tableToAbbreviation[table]}`)}\n` +
+                `Densidad: ${numberToString(densidad, ` ${tableToAbbreviation[table]}/km²`)}\n` +
                 `Porcentaje del total: ${numberToString(porcentaje, '%', 100)}`
             );
         }
@@ -487,7 +506,9 @@ function HomeComponent() {
         if (!record) return null;
         return (
             `ID: ${record.MANZENT ?? record.hex_id}\n` +
-            `Población total: ${numberToString(record.poblacion, ' hab.')}\n` +
+            `Población: ${numberToString(record.poblacion, ' hab.')}\n` +
+            `Hogares: ${numberToString(record.hogares)}\n` +
+            `Viviendas: ${numberToString(record.viviendas)}\n` +
             `Área: ${numberToString(record.area, ' m²', 1_000_000)}\n` +
             (isBivariate
                 ? 'X:\n' +
@@ -647,12 +668,13 @@ function HomeComponent() {
                             ? conurbacionesByRegion
                             : comunasByRegion
                     }
-                    variablesList={variablesList}
+                    variablesList={variablesList[selectedTable]}
                     maxFilters={MAX_FILTERS}
                     selectedRegion={selectedRegion}
                     selectedPlace={selectedPlace}
                     selectedDataType={selectedDataType}
                     selectedView={selectedView}
+                    selectedTable={selectedTable}
                     selectedFilters={selectedFilters}
                     onRegionChange={setSelectedRegion}
                     onPlaceChange={setSelectedPlace}
@@ -661,6 +683,9 @@ function HomeComponent() {
                     }
                     onViewChange={(newView) =>
                         setSelectedView(isView(newView) ? newView : 'conteo')
+                    }
+                    onTableChange={(newTable) =>
+                        setSelectedTable(isTable(newTable) ? newTable : 'personas')
                     }
                     onFilterChange={(index, field, value) => {
                         if (field !== 'catY' && !value) return;
@@ -683,6 +708,7 @@ function HomeComponent() {
                 legend={legend}
                 bivariateData={dataRecordsArray}
                 view={view}
+                table={table}
                 scale={scale}
                 tooltip={tooltip}
                 onViewStateChange={setViewport}

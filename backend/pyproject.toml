@@ -12,6 +12,7 @@ dependencies = [
     "orjson>=3.13.0",
     "pandas>=3.0.5",
     "pyarrow>=25.0.1",
+    "quackosm>=0.20.0",
     "requests>=2.34.2",
 ]
 

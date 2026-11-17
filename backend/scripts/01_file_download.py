@@ -30,9 +30,7 @@ def unzip(zip_path: Path, out_dir: Path):
 
 
 # %%
-def download_file(
-    url: str, download_path: Path, chunk_size: int = 8192, **kwargs
-):
+def download_file(url: str, download_path: Path, chunk_size: int = 8192, **kwargs):
     """
     Descarga un archivo, mostrando una barra de progreso y creando el
     directorio si es necesario.
@@ -50,7 +48,7 @@ def download_file(
         Argumentos que serán pasados a la barra de progreso, creada con
         `tqdm.tqdm`.
     """
-    
+
     download_path.parent.mkdir(exist_ok=True)
 
     response = requests.get(url, stream=True)
@@ -80,7 +78,6 @@ def download_file(
     progress_bar.close()
 
 
-
 # %% [markdown]
 # ## Cartografía censal
 
@@ -92,3 +89,12 @@ download_file(
 
 # %%
 unzip(RAW_DATA_PATH / "Cartografia.zip", INTERIM_DATA_PATH / "censo")
+
+# %% [markdown]
+# ## Datos de OpenStreetMap
+
+# %%
+download_file(
+    "https://download.geofabrik.de/south-america/chile-latest.osm.pbf",
+    RAW_DATA_PATH / "Chile.osm.pbf",
+)

@@ -14,4 +14,4 @@ RUN uv sync --frozen --no-dev
 
 EXPOSE 5000
 
-CMD ["uv", "run", "gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "app:app"]
+CMD ["uv", "run", "fastapi", "run", "--host", "0.0.0.0", "--port", "5000"]

@@ -6,25 +6,24 @@ from pathlib import Path
 from typing import Literal, TypedDict
 
 import duckdb
+import numpy as np
 import orjson
 import pandas as pd
-from flask import (
-    Flask,
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    PlainTextResponse,
     Response,
-    abort,
-    jsonify,
-    make_response,
-    request,
-    send_from_directory,
 )
-from flask_cors import CORS
 from mapclassify import Quantiles
-from werkzeug.exceptions import HTTPException
 
-app = Flask(__name__)
-app.url_map.strict_slashes = False
-CORS(app)
-logger = logging.getLogger()
+app = FastAPI()
+# CORS(app)
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.handlers = logging.getLogger("uvicorn").handlers
 
 
 class Filter(TypedDict):
@@ -67,22 +66,20 @@ stats_conurbacion_grouped = {
 }
 
 
-@app.errorhandler(HTTPException)
-def handle_exception(e):
-    return jsonify(
-        {
-            "error": e.name,
-            "message": e.description,
-        }
-    ), e.code
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"message": exc.detail},
+    )
 
 
-@app.route("/api/")
+@app.get("/api/", response_class=PlainTextResponse)
 def hello():
     return "HELLO"
 
 
-@app.route("/api/tiles/<int:z>/<int:x>/<int:y>/")
+@app.get("/api/tiles/{z}/{x}/{y}/")
 def getTiles(z: int, x: int, y: int):
     """
     Obtiene las tiles correspondientes a las comunas visibles según el
@@ -104,41 +101,48 @@ def getTiles(z: int, x: int, y: int):
     conn.close()
 
     if not tile:
-        return b"", 200, {"Content-Type": "application/vnd.mapbox-vector-tile"}
+        return Response(
+            b"",
+            headers={"Content-Type": "application/vnd.mapbox-vector-tile"},
+        )
 
-    response = make_response(tile[0])
-    response.headers["Content-Type"] = "application/vnd.mapbox-vector-tile"
-    response.headers["Content-Encoding"] = "gzip"
+    response = Response(
+        tile[0],
+        headers={
+            "Content-Type": "application/vnd.mapbox-vector-tile",
+            "Content-Encoding": "gzip",
+        },
+    )
     # response.headers["Access-Control-Allow-Origin"] = "*"
     return response
 
 
-@app.route("/api/list/comunas")
+@app.get("/api/list/comunas/")
 def getComunaList():
     """Retorna una lista que asocia a cada región con sus comunas."""
-    return send_from_directory(PROCESSED_DATA_PATH, "comunas.json")
+    return FileResponse(PROCESSED_DATA_PATH / "comunas.json")
 
 
-@app.route("/api/list/conurbaciones")
+@app.get("/api/list/conurbaciones/")
 def getConurbacionList():
     """Retorna una lista que asocia a cada región con sus conurbaciones."""
-    return send_from_directory(PROCESSED_DATA_PATH, "conurbaciones.json")
+    return FileResponse(PROCESSED_DATA_PATH / "conurbaciones.json")
 
 
-@app.route("/api/list/conurbaciones-comunas")
+@app.get("/api/list/conurbaciones-comunas/")
 def getConurbacionComunaList():
     """Retorna una lista que asocia a cada conurbación con sus comunas."""
-    return send_from_directory(PROCESSED_DATA_PATH, "conurbaciones_comunas.json")
+    return FileResponse(PROCESSED_DATA_PATH / "conurbaciones_comunas.json")
 
 
-@app.route("/api/list/variables")
+@app.get("/api/list/variables/")
 def getVariableList():
     """Retorna una lista que asocia cada variable (de los cruces realizados)
     con sus categorías posibles."""
-    return send_from_directory(PROCESSED_DATA_PATH / "stats", "variables.json")
+    return FileResponse(PROCESSED_DATA_PATH / "stats" / "variables.json")
 
 
-@app.route("/api/comuna/<comuna>/bbox/")
+@app.get("/api/comuna/{comuna}/bbox/")
 def getComunaBbox(comuna: str):
     """
     Retorna la bounding box de la comuna solicitada, como un JSON con 4
@@ -148,10 +152,10 @@ def getComunaBbox(comuna: str):
     try:
         return comunas_bbox.loc[comuna].to_dict()
     except KeyError:
-        abort(404)
+        raise HTTPException(status_code=404, detail="NoComuna")
 
 
-@app.route("/api/conurbacion/<conurbacion>/bbox/")
+@app.get("/api/conurbacion/{conurbacion}/bbox/")
 def getConurbacionBbox(conurbacion: str):
     """
     Retorna la bounding box de la conurbación solicitada, como un JSON con 4
@@ -161,15 +165,20 @@ def getConurbacionBbox(conurbacion: str):
     try:
         return conurbaciones_bbox.loc[conurbacion].to_dict()
     except KeyError:
-        abort(404)
+        raise HTTPException(status_code=404, detail="NoConurbacion")
 
 
-@app.route("/api/comuna/<comuna>/manzent-geom")
+@app.get("/api/comuna/{comuna}/manzent-geom/")
 def getComunaManzentGeom(comuna: str):
     """
     Retorna la geometría de las manzanas/entidades de la comuna solicitada.
     """
-    return send_from_directory(MANZENT_GEOM_PATH, f"{comuna}.fgb")
+    requested = (MANZENT_GEOM_PATH / f"{comuna}.fgb").resolve()
+    if not requested.is_relative_to(MANZENT_GEOM_PATH):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    if not requested.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(requested)
 
 
 def getPlaceData(
@@ -215,10 +224,10 @@ def getPlaceData(
         index_col = "hex_id"
 
     if general_data is None:
-        abort(404, "NoComuna")
+        raise HTTPException(404, "NoComuna")
 
     if not file_path.exists():
-        abort(404, "NoData")
+        raise HTTPException(404, "NoData")
 
     # damos vuelta variables si es necesario (abortamos si una de las
     # variables no existe)
@@ -228,7 +237,7 @@ def getPlaceData(
             var1, var2 = var2, var1
             cat1, cat2 = cat2, cat1
     except ValueError:
-        abort(404, "NoVar")
+        raise HTTPException(404, "NoVar")
 
     # leemos los conteos solicitados
     count_data = (
@@ -251,8 +260,7 @@ def getPlaceData(
         .astype(float)
     )
     if len(count_data) == 0:
-        abort(404, "NoCat")
-    print(count_data)
+        raise HTTPException(404, "NoCat")
 
     count_data["densidad"] = count_data["conteo"] / general_data["area"]
     count_data["porcentaje"] = (
@@ -300,14 +308,10 @@ def getUnivariatePlaceData(
         for column in ("conteo", "densidad", "porcentaje")
     }
 
-    payload = {
+    return {
         "legend": max_values,
-        "data": all_data.to_dict(orient="records"),
+        "data": all_data.replace({np.nan: None}).to_dict(orient="records"),
     }
-    return Response(
-        orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY),
-        mimetype="application/json",
-    )
 
 
 def getBivariatePlaceData(
@@ -370,34 +374,30 @@ def getBivariatePlaceData(
 
         legend[axis] = bins
 
-        general_data[axis] = general_data.index.map(count_data.to_dict(orient="index"))
+        general_data[axis] = general_data.index.map(
+            count_data.replace({np.nan: None}).to_dict(orient="index")
+        )
 
-    payload = {
+    response = {
         "legend": legend,
         "data": general_data.to_dict(orient="records"),
     }
 
-    response = Response(
-        orjson.dumps(payload, option=orjson.OPT_SERIALIZE_NUMPY),
-        mimetype="application/json",
-    )
-
     return response
 
 
-def getFiltersFromRequest() -> list[Filter]:
+def getFiltersFromRequest(filterStrings: list[str]) -> list[Filter]:
     """
     Obtiene los filtros requeridos por una consulta de datos.
     """
-    filter_strings = request.args.getlist("filter")
-    if len(filter_strings) != 2:
-        abort(400, "InvalidFilterLength")
+    if len(filterStrings) != 2:
+        raise HTTPException(400, "InvalidFilterLength")
 
     parsed_filters = []
-    for filter_string in filter_strings:
+    for filter_string in filterStrings:
         parts = filter_string.split(":")
         if len(parts) not in (2, 3) or not all(parts):
-            abort(400, "InvalidFilterContent")
+            raise HTTPException(400, "InvalidFilterContent")
         parsed_filters.append(
             {
                 "var": parts[0],
@@ -409,44 +409,52 @@ def getFiltersFromRequest() -> list[Filter]:
     return parsed_filters
 
 
-@app.route("/api/comuna/<comuna>/manzent-data/<table>/")
-def getComunaManzentData(comuna: str, table: str):
+@app.get("/api/comuna/{comuna}/manzent-data/{table}/")
+def getComunaManzentData(
+    comuna: str,
+    table: str,
+    filterStrings: list[str] = Query(default=[], alias="filter"),  # noqa: B008
+):
     """
     Obtiene los datos de `getPlaceData` para cada manzana/entidad de una
     comuna.
     """
 
-    filters = getFiltersFromRequest()
+    filters = getFiltersFromRequest(filterStrings)
     if any(f["catY"] is not None for f in filters):
         return getBivariatePlaceData(comuna, "manzent", table, filters)
     return getUnivariatePlaceData(comuna, "manzent", table, filters)
 
 
-@app.route("/api/comuna/<comuna>/h3-data/<table>/")
-def getComunaH3Data(comuna: str, table: str):
+@app.get("/api/comuna/{comuna}/h3-data/{table}/")
+def getComunaH3Data(
+    comuna: str,
+    table: str,
+    filterStrings: list[str] = Query(default=[], alias="filter"),  # noqa: B008
+):
     """
     Obtiene los datos de `getPlaceData` para cada celda de H3 de una comuna
     (solo considerando su área urbana).
     """
 
-    filters = getFiltersFromRequest()
+    filters = getFiltersFromRequest(filterStrings)
     if any(f["catY"] is not None for f in filters):
         return getBivariatePlaceData(comuna, "h3_comuna", table, filters)
     return getUnivariatePlaceData(comuna, "h3_comuna", table, filters)
 
 
-@app.route("/api/conurbacion/<conurbacion>/h3-data/<table>/")
-def getConurbacionH3Data(conurbacion: str, table: str):
+@app.get("/api/conurbacion/{conurbacion}/h3-data/{table}/")
+def getConurbacionH3Data(
+    conurbacion: str,
+    table: str,
+    filterStrings: list[str] = Query(default=[], alias="filter"),  # noqa: B008
+):
     """
     Obtiene los datos de `getPlaceData` para cada celda de H3 de una
     conurbación.
     """
 
-    filters = getFiltersFromRequest()
+    filters = getFiltersFromRequest(filterStrings)
     if any(f["catY"] is not None for f in filters):
         return getBivariatePlaceData(conurbacion, "h3_conurbacion", table, filters)
     return getUnivariatePlaceData(conurbacion, "h3_conurbacion", table, filters)
-
-
-if __name__ == "__main__":
-    app.run(port=8080)

@@ -2,10 +2,19 @@
 # # *Masking* de manzanas
 #
 # En este script, realizaremos *masking* de las manzanas para solamente incluir
-# el área que posee edificios. Esto entregará resultados más precisos a la hora
-# de realizar cambio de soporte a celdas H3. Actualmente, solo estamos
-# realizando *masking* para las manzanas, ya que no estamos considerando áreas
-# rurales en las visualizaciones con celdas H3.
+# el área que posee edificios cuyo uso no esté declarado como no residencial.
+# Esto entregará resultados más precisos a la hora de realizar cambio de soporte
+# a celdas H3. Actualmente, solo estamos realizando *masking* para las manzanas,
+# ya que no estamos considerando áreas rurales en las visualizaciones con celdas
+# H3.
+#
+# **A considerar**: en los casos donde una manzana no posee área valida,
+# actualmente la población presente en esa manzana es descartada. Esto implica
+# que la población total a nivel de manzana no necesariamente va a calzar con la
+# población total a nivel de celda H3. Si se desea solucionar este problema, se
+# podría declarar que en manzanas que no poseen área válida, se mantenga el área
+# original de la manzana en vez de dejar el área vacía. Luego, la población
+# presente en esa manzana se repartirá uniformemente en vez de ser descartada.
 
 # %%
 from pathlib import Path

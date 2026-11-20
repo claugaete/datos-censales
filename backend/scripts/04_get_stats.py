@@ -6,7 +6,7 @@
 # resoluciones) y se disponibilizarán para su descarga.
 #
 # **IMPORTANTE**: actualmente los datos a nivel de celda H3 (comuna y
-# conurbación) solamente se encuentran disponibles para los datos de personas,
+# conurbación) solamente se encuentran disponibles para la tabla de personas,
 # no viviendas ni hogares.
 
 # %%
@@ -35,12 +35,16 @@ STATS_DATA_PATH.mkdir(exist_ok=True)
 (STATS_DATA_PATH / "cruces_conurbacion").mkdir(exist_ok=True)
 
 # %%
-manzanas = gpd.read_parquet(
-    CENSO_DATA_PATH / "Cartografia_censo2024_Pais_Manzanas.parquet"
-).rename_geometry("geometry").set_index("MANZENT")
-entidades = gpd.read_parquet(
-    CENSO_DATA_PATH / "Cartografia_censo2024_Pais_Entidades.parquet"
-).rename_geometry("geometry").set_index("MANZENT")
+manzanas = (
+    gpd.read_parquet(CENSO_DATA_PATH / "Cartografia_censo2024_Pais_Manzanas.parquet")
+    .rename_geometry("geometry")
+    .set_index("MANZENT")
+)
+entidades = (
+    gpd.read_parquet(CENSO_DATA_PATH / "Cartografia_censo2024_Pais_Entidades.parquet")
+    .rename_geometry("geometry")
+    .set_index("MANZENT")
+)
 
 # %%
 manzent = pd.concat([manzanas, entidades])
@@ -58,12 +62,15 @@ limites_urbanos = gpd.read_parquet(
 # A nivel de manzana, tendremos dos fuentes de información para las estadísticas:
 #
 # 1. Los cruces realizados por Vicente, que se deben encontrar en el directorio
-#    `data/processed/stats/cruces`. De aquí se extraerán los conteos filtrados
-#    según las variables solicitadas en la aplicación.
+#    `data/processed/stats/cruces` (con tres subdirectorios, `personas`,
+#    `hogares` y `viviendas`, con los cruces correspondientes a cada tabla). De
+#    aquí se extraerán los conteos filtrados según las variables solicitadas en
+#    la aplicación.
 # 2. Información del área y población total de cada manzana/entidad, que se
 #    extraerá directamente de la cartografía del Censo. Al ser poca información,
 #    se guardará toda en un único CSV que se mantendrá siempre cargado en el
 #    backend de la aplicación web.
+
 
 # %%
 # función que recibe el GDF de una comuna y retorna sus estadísticas (número
@@ -156,8 +163,10 @@ all_stats_h3: dict[str, pd.DataFrame] = {}
 for comuna, comuna_gdf in tqdm(manzanas.groupby("COMUNA")):
     masked_geom = gpd.read_parquet(MASKS_DATA_PATH / f"{comuna}.parquet")
     comuna_stats_gdf = gpd.GeoDataFrame(
-        comuna_gdf[["n_per"]].rename(columns={"n_per": "poblacion"}),
-        geometry=masked_geom.geometry
+        comuna_gdf[["n_per", "n_hog", "n_vp"]].rename(
+            columns={"n_per": "poblacion", "n_hog": "hogares", "n_vp": "viviendas"}
+        ),
+        geometry=masked_geom.geometry,
     ).to_crs(5361)
 
     lu = limites_urbanos[limites_urbanos["COMUNA"] == comuna]
@@ -171,7 +180,7 @@ for comuna, comuna_gdf in tqdm(manzanas.groupby("COMUNA")):
     h3_gdf: gpd.GeoDataFrame = area_interpolate(
         source_df=comuna_stats_gdf,
         target_df=h3_geoms,
-        extensive_variables=["poblacion"],
+        extensive_variables=["poblacion", "hogares", "viviendas"],
         allocate_total=False,
         fill_nan="median",
     ).assign(area=h3_geoms.area / 1_000_000, COMUNA=comuna)
@@ -198,7 +207,7 @@ with tqdm(comunas_cuts) as pbar:
         # obtenemos datos a nivel de manzent (n_vars filas x n_manzent columnas)
         try:
             conteo_df = pd.read_parquet(
-                STATS_DATA_PATH / "cruces" / f"cruces_{cut}.parquet",
+                STATS_DATA_PATH / "cruces" / "personas" / f"cruces_{cut}.parquet",
             )
         except FileNotFoundError:
             continue
@@ -237,14 +246,12 @@ with tqdm(comunas_cuts) as pbar:
             var_name="hex_id",
             value_name="conteo",
         )[["hex_id", "var1", "cat1", "var2", "cat2", "conteo"]]
-        df_melted.to_parquet(STATS_DATA_PATH / "cruces_h3" / f"cruces_{cut}.parquet")
+        df_melted.to_parquet(
+            STATS_DATA_PATH / "cruces_h3" / "personas" / f"cruces_{cut}.parquet"
+        )
 
 # %% [markdown]
 # ## Generación de estadísticas para conurbaciones
-
-# %% [markdown]
-# Para este cambio de soporte, actualmente no estamos utilizando *masking*
-# (hacemos *area-weighted interpolation* clásica).
 
 # %%
 H3_RESOLUTION_CONURBACION = 9
@@ -262,13 +269,21 @@ for conurbacion, group in tqdm(limites_urbanos.groupby("CONURBACION")):
     ).to_crs(5361)
 
     stats_sum = pd.DataFrame(
-        {"poblacion": 0, "area": h3_geoms.area / 1_000_000, "CONURBACION": conurbacion},
+        {
+            "poblacion": 0,
+            "hogares": 0,
+            "viviendas": 0,
+            "area": h3_geoms.area / 1_000_000,
+            "CONURBACION": conurbacion,
+        },
         index=h3_geoms.index,
     )
 
     for comuna in tqdm(group["COMUNA"].values, leave=False, desc=conurbacion):
-        stats_gdf = manzanas[manzanas["COMUNA"] == comuna][["n_per", "geometry"]].rename(
-            columns={"n_per": "poblacion"}
+        stats_gdf = manzanas[manzanas["COMUNA"] == comuna][
+            ["n_per", "n_hog", "n_vp", "geometry"]
+        ].rename(
+            columns={"n_per": "poblacion", "n_hog": "hogares", "n_vp": "viviendas"}
         )
         stats_gdf.geometry = gpd.read_parquet(
             MASKS_DATA_PATH / f"{comuna}.parquet"
@@ -276,12 +291,14 @@ for conurbacion, group in tqdm(limites_urbanos.groupby("CONURBACION")):
         h3_gdf: gpd.GeoDataFrame = area_interpolate(
             source_df=stats_gdf,
             target_df=h3_geoms,
-            extensive_variables=["poblacion"],
+            extensive_variables=["poblacion", "hogares", "viviendas"],
             allocate_total=False,
             fill_nan="median",
         )
-        stats_sum["poblacion"] += h3_gdf["poblacion"]
-        
+        stats_sum[["poblacion", "hogares", "viviendas"]] += h3_gdf[
+            ["poblacion", "hogares", "viviendas"]
+        ]
+
     all_stats_conurbacion[conurbacion] = stats_sum
 
 # %%
@@ -305,12 +322,14 @@ for conurbacion, group in tqdm(limites_urbanos.groupby("CONURBACION")):
     ).to_crs(5361)
 
     conteos_sum = None
-    
-    for comuna, cut in tqdm(group[["COMUNA", "CUT"]].values, leave=False, desc=conurbacion):
+
+    for comuna, cut in tqdm(
+        group[["COMUNA", "CUT"]].values, leave=False, desc=conurbacion
+    ):
         # obtenemos datos a nivel de manzent (n_vars filas x n_manzent columnas)
         try:
             conteo_df: pd.DataFrame = pd.read_parquet(
-                STATS_DATA_PATH / "cruces" / f"cruces_{cut}.parquet",
+                STATS_DATA_PATH / "cruces" / "personas" / f"cruces_{cut}.parquet",
             )
         except FileNotFoundError:
             continue
@@ -353,5 +372,8 @@ for conurbacion, group in tqdm(limites_urbanos.groupby("CONURBACION")):
     )[["hex_id", "var1", "cat1", "var2", "cat2", "conteo"]]
 
     conteos_melted.to_parquet(
-        STATS_DATA_PATH / "cruces_conurbacion" / f"cruces_{conurbacion}.parquet"
+        STATS_DATA_PATH
+        / "cruces_conurbacion"
+        / "personas"
+        / f"cruces_{conurbacion}.parquet"
     )
